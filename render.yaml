@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: videohub-diplom
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: videohub-diplom-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_TTL_HOURS
+        value: "168"
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: admin1
+      - key: AUTH_EXPOSE_CODE
+        value: "true"
+      - key: RESEED_ON_START
+        value: "false"
+
+databases:
+  - name: videohub-diplom-db
+    plan: free
+    databaseName: videohub
+    user: videohub

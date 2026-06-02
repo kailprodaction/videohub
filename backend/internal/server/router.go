@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -108,5 +109,34 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 		})
 	})
 
+	if cfg.StaticDir != "" {
+		if staticAbs, err := filepath.Abs(cfg.StaticDir); err == nil {
+			if info, statErr := os.Stat(staticAbs); statErr == nil && info.IsDir() {
+				r.Get("/*", spaHandler(staticAbs))
+			}
+		}
+	}
+
 	return r
+}
+
+func spaHandler(staticAbs string) http.HandlerFunc {
+	indexPath := filepath.Join(staticAbs, "index.html")
+	return func(w http.ResponseWriter, r *http.Request) {
+		cleanPath := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+		filePath := filepath.Join(staticAbs, cleanPath)
+
+		rel, err := filepath.Rel(staticAbs, filePath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			http.ServeFile(w, r, indexPath)
+			return
+		}
+
+		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			http.ServeFile(w, r, filePath)
+			return
+		}
+
+		http.ServeFile(w, r, indexPath)
+	}
 }

@@ -7,32 +7,34 @@ import (
 )
 
 type Config struct {
-	HTTPAddr        string
-	DatabaseURL     string
-	UploadsDir      string
-	PublicBaseURL   string
-	CORSOrigins     []string
-	MaxVideoBytes   int64
-	MaxImageBytes   int64
-	DefaultUserID   string
-	ReseedOnStart   bool
+	HTTPAddr      string
+	DatabaseURL   string
+	UploadsDir    string
+	StaticDir     string
+	PublicBaseURL string
+	CORSOrigins   []string
+	MaxVideoBytes int64
+	MaxImageBytes int64
+	DefaultUserID string
+	ReseedOnStart bool
 
-	JWTSecret       []byte
-	JWTTTLHours     int
-	AdminUsername   string
-	AdminPassword   string
-	AuthCodeTTLMin  int
+	JWTSecret      []byte
+	JWTTTLHours    int
+	AdminUsername  string
+	AdminPassword  string
+	AuthCodeTTLMin int
 	// AuthExposeCode = true означает, что backend будет возвращать сгенерированный код
 	// прямо в ответе API (для демонстрации без SMTP). В проде должно быть false.
-	AuthExposeCode  bool
+	AuthExposeCode bool
 }
 
 func Load() Config {
 	return Config{
-		HTTPAddr:      getEnv("HTTP_ADDR", ":8080"),
+		HTTPAddr:      getHTTPAddr(),
 		DatabaseURL:   getEnv("DATABASE_URL", "postgres://videohub:videohub@localhost:5432/videohub?sslmode=disable"),
 		UploadsDir:    getEnv("UPLOADS_DIR", "./uploads"),
-		PublicBaseURL: strings.TrimRight(getEnv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
+		StaticDir:     getEnv("STATIC_DIR", ""),
+		PublicBaseURL: getPublicBaseURL(),
 		CORSOrigins:   splitCSV(getEnv("CORS_ORIGINS", "http://localhost:5173")),
 		MaxVideoBytes: getEnvInt64("MAX_VIDEO_BYTES", 500*1024*1024),
 		MaxImageBytes: getEnvInt64("MAX_IMAGE_BYTES", 10*1024*1024),
@@ -46,6 +48,26 @@ func Load() Config {
 		AuthCodeTTLMin: int(getEnvInt64("AUTH_CODE_TTL_MIN", 10)),
 		AuthExposeCode: getEnvBool("AUTH_EXPOSE_CODE", true),
 	}
+}
+
+func getHTTPAddr() string {
+	if v := os.Getenv("HTTP_ADDR"); v != "" {
+		return v
+	}
+	if port := os.Getenv("PORT"); port != "" {
+		return ":" + port
+	}
+	return ":8080"
+}
+
+func getPublicBaseURL() string {
+	if v := os.Getenv("PUBLIC_BASE_URL"); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	if host := os.Getenv("RENDER_EXTERNAL_HOSTNAME"); host != "" {
+		return "https://" + strings.TrimRight(host, "/")
+	}
+	return "http://localhost:8080"
 }
 
 func getEnv(key, def string) string {
