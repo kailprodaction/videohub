@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: 255 255 255;
+  --color-surface: 249 249 249;
+  --color-elevated: 240 240 240;
+  --color-border: 226 226 226;
+  --color-text: 15 15 15;
+  --color-muted: 96 96 96;
+  --color-brand: 255 0 51;
+  --color-brand-hover: 204 0 41;
+  --color-danger: 220 38 38;
+}
+
+.dark {
+  --color-bg: 15 15 15;
+  --color-surface: 24 24 24;
+  --color-elevated: 39 39 42;
+  --color-border: 55 55 60;
+  --color-text: 240 240 240;
+  --color-muted: 170 170 170;
+  --color-brand: 255 64 96;
+  --color-brand-hover: 230 50 80;
+  --color-danger: 248 113 113;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-text antialiased;
+  font-family: 'Roboto', 'Inter', system-ui, sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-border)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-border));
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-muted));
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-elevated)) 0%,
+    rgb(var(--color-surface)) 50%,
+    rgb(var(--color-elevated)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgb(var(--color-brand));
+  outline-offset: 2px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgb(var(--color-border));
+  border-radius: 2px;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: rgb(var(--color-brand));
+}
+
+input[type='range']::-moz-range-track {
+  height: 4px;
+  background: rgb(var(--color-border));
+  border-radius: 2px;
+}
+
+input[type='range']::-moz-range-thumb {
+  border: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: rgb(var(--color-brand));
+}
+
+/* Кастомный плеер: в полноэкранном режиме растягиваем wrapper на весь экран,
+   снимая фиксированную пропорцию 16:9. */
+.video-wrap:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+}
+
+.video-wrap:fullscreen > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.video-wrap:fullscreen video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

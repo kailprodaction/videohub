@@ -1,0 +1,33 @@
+# Зависимости
+node_modules/
+dist/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Frontend
+.vite/
+tsconfig.tsbuildinfo
+
+# Окружения (никогда не коммитим — могут содержать пароли)
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+
+# Go артефакты
+backend/bin/
+backend/*.exe
+
+# Загруженные пользователем файлы — runtime data, не код
+backend/uploads/MP4/*
+backend/uploads/PNG/*
+!backend/uploads/MP4/.gitkeep
+!backend/uploads/PNG/.gitkeep
+
+# pgadmin локальное состояние
+pgadmin/storage/

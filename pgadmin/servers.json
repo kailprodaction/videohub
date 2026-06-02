@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "VideoHub (compose)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "videohub",
+      "Username": "videohub",
+      "SSLMode": "prefer"
+    }
+  }
+}

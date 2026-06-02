@@ -1,0 +1,183 @@
+package handlers
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+
+	"videohub/internal/models"
+	"videohub/internal/recommend"
+	"videohub/internal/store"
+)
+
+// GET /api/videos?q=&channelId=&limit=&category=
+func (h *Handlers) ListVideos(w http.ResponseWriter, r *http.Request) {
+	params := store.ListVideosParams{
+		Query:      r.URL.Query().Get("q"),
+		ChannelID:  r.URL.Query().Get("channelId"),
+		Category:   r.URL.Query().Get("category"),
+		OnlyPublic: r.URL.Query().Get("onlyPublic") == "true",
+	}
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		params.Limit = l
+	}
+	videos, err := h.Store.ListVideos(r.Context(), params)
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, videos)
+}
+
+// GET /api/videos/{id}
+func (h *Handlers) GetVideo(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	v, err := h.Store.GetVideo(r.Context(), id)
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// DELETE /api/videos/{id}
+func (h *Handlers) DeleteVideo(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := h.Store.DeleteVideo(r.Context(), id); handleStoreErr(w, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// createVideoReq — JSON-форма создания (для случая, когда файлы уже загружены).
+type createVideoReq struct {
+	ChannelID    string   `json:"channelId"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	ThumbnailURL string   `json:"thumbnailUrl"`
+	VideoURL     string   `json:"videoUrl"`
+	DurationSec  int      `json:"durationSec"`
+	Category     string   `json:"category"`
+	Visibility   string   `json:"visibility"`
+	Tags         []string `json:"tags"`
+}
+
+// POST /api/videos — создаёт видео (ссылки на файлы предполагаются уже загруженными).
+func (h *Handlers) CreateVideo(w http.ResponseWriter, r *http.Request) {
+	var req createVideoReq
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "invalid json: "+err.Error())
+		return
+	}
+	if req.Title == "" || req.ChannelID == "" {
+		writeError(w, http.StatusBadRequest, "validation", "title and channelId are required")
+		return
+	}
+	if req.Visibility == "" {
+		req.Visibility = "public"
+	}
+	if req.Category == "" {
+		req.Category = "other"
+	}
+	if req.Tags == nil {
+		req.Tags = []string{}
+	}
+	v, err := h.Store.CreateVideo(r.Context(), models.Video{
+		ChannelID:    req.ChannelID,
+		Title:        req.Title,
+		Description:  req.Description,
+		ThumbnailURL: req.ThumbnailURL,
+		VideoURL:     req.VideoURL,
+		DurationSec:  req.DurationSec,
+		Category:     req.Category,
+		Visibility:   req.Visibility,
+		Tags:         req.Tags,
+	})
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
+}
+
+// POST /api/videos/{id}/views — увеличивает счётчик просмотров.
+func (h *Handlers) RegisterView(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	uid := h.currentUserID(r)
+	if err := h.Store.RegisterView(r.Context(), id, uid); handleStoreErr(w, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/videos/{id}/reaction { "reaction": "like" | "dislike" | "" }
+func (h *Handlers) SetReaction(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Reaction string `json:"reaction"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	if req.Reaction != "" && req.Reaction != "like" && req.Reaction != "dislike" {
+		writeError(w, http.StatusBadRequest, "validation", "reaction must be 'like', 'dislike' or empty")
+		return
+	}
+	prev, err := h.Store.SetReaction(r.Context(), id, h.currentUserID(r), req.Reaction)
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"previous": prev, "current": fallback(req.Reaction, "none")})
+}
+
+// GET /api/videos/{id}/reaction — текущая реакция пользователя.
+func (h *Handlers) GetReaction(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cur, err := h.Store.GetReaction(r.Context(), id, h.currentUserID(r))
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"reaction": fallback(cur, "")})
+}
+
+// GET /api/videos/recommended
+func (h *Handlers) Recommended(w http.ResponseWriter, r *http.Request) {
+	limit := 24
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	videos, err := h.Store.ListVideos(r.Context(), store.ListVideosParams{OnlyPublic: true, Limit: 100, OrderBy: "rating"})
+	if handleStoreErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, recommend.Rank(videos, "", limit))
+}
+
+// GET /api/videos/{id}/recommendations — рекомендации рядом с плеером.
+func (h *Handlers) Recommendations(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	current, err := h.Store.GetVideo(r.Context(), id)
+	if handleStoreErr(w, err) {
+		return
+	}
+	pool, err := h.Store.ListVideos(r.Context(), store.ListVideosParams{
+		OnlyPublic: true,
+		ExcludeID:  id,
+		Limit:      200,
+		OrderBy:    "rating",
+	})
+	if handleStoreErr(w, err) {
+		return
+	}
+	limit := 12
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	writeJSON(w, http.StatusOK, recommend.Rank(pool, current.Category, limit))
+}
+
+func fallback(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}

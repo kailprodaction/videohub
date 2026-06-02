@@ -1,0 +1,157 @@
+// Package seed наполняет БД демонстрационными данными.
+// Запускается при пустой таблице users или при RESEED_ON_START=true.
+package seed
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
+)
+
+// Run проверяет, есть ли уже пользователи; если нет — наполняет БД.
+// defaultUserID становится id главного "залогиненного" админа.
+func Run(ctx context.Context, pool *pgxpool.Pool, defaultUserID string) error {
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	return reseed(ctx, pool, defaultUserID)
+}
+
+// Force всегда наполняет БД (предполагается, что таблицы уже пустые).
+func Force(ctx context.Context, pool *pgxpool.Pool, defaultUserID string) error {
+	return reseed(ctx, pool, defaultUserID)
+}
+
+func reseed(ctx context.Context, pool *pgxpool.Pool, defaultUserID string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// ---------------- Users ----------------
+	// Все демо-пользователи имеют логин/пароль для входа через /login.
+	// Админ: admin / admin1. Остальные: <login> / password.
+	type userSeed struct {
+		id, username, displayName, email, avatar, bio, role, password string
+	}
+	users := []userSeed{
+		{defaultUserID, "admin", "Администратор", "admin@videohub.local",
+			"https://i.pravatar.cc/200?img=12",
+			"Учётка администратора платформы.", "admin", "admin1"},
+		{"22222222-2222-2222-2222-222222222222", "tech_guru", "TechGuru", "tech@videohub.local",
+			"https://i.pravatar.cc/200?img=33", "Обзоры гаджетов.", "user", "password"},
+		{"33333333-3333-3333-3333-333333333333", "music_master", "MusicMaster", "music@videohub.local",
+			"https://i.pravatar.cc/200?img=47", "Музыкальные клипы.", "user", "password"},
+		{"44444444-4444-4444-4444-444444444444", "gamer_pro", "GamerPro", "gamer@videohub.local",
+			"https://i.pravatar.cc/200?img=5", "Прохождения игр.", "user", "password"},
+		{"55555555-5555-5555-5555-555555555555", "edu_channel", "EduChannel", "edu@videohub.local",
+			"https://i.pravatar.cc/200?img=20", "Образовательные ролики.", "user", "password"},
+		{"66666666-6666-6666-6666-666666666666", "sport_zone", "SportZone", "sport@videohub.local",
+			"https://i.pravatar.cc/200?img=15", "Спорт и тренировки.", "user", "password"},
+		{"77777777-7777-7777-7777-777777777777", "ivan", "Иван Петров", "ivan@videohub.local",
+			"https://i.pravatar.cc/200?img=64", "Снимаю видео о технологиях.", "user", "password"},
+		{"88888888-8888-8888-8888-888888888888", "cooking", "CookingMaster", "cooking@videohub.local",
+			"https://i.pravatar.cc/200?img=44", "Кулинарные рецепты и лайфхаки.", "user", "password"},
+		{"99999999-9999-9999-9999-999999999999", "travel", "TravelDiary", "travel@videohub.local",
+			"https://i.pravatar.cc/200?img=51", "Путешествия и приключения.", "user", "password"},
+		{"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "art_studio", "ArtStudio", "art@videohub.local",
+			"https://i.pravatar.cc/200?img=22", "Уроки рисования и обзоры выставок.", "user", "password"},
+	}
+	for _, u := range users {
+		hash, err := bcrypt.GenerateFromPassword([]byte(u.password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash password for %s: %w", u.username, err)
+		}
+		h := string(hash)
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO users(id, username, display_name, email, avatar_url, bio, role, password_hash)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			u.id, u.username, u.displayName, u.email, u.avatar, u.bio, u.role, &h); err != nil {
+			return fmt.Errorf("seed users: %w", err)
+		}
+	}
+
+	// ---------------- Channels (один на пользователя) ----------------
+	type chSeed struct {
+		id, ownerID, name, handle, desc, avatar, banner string
+		subs                                            int64
+	}
+	channels := []chSeed{
+		{"c1c1c1c1-1111-1111-1111-111111111111", defaultUserID, "Канал администратора", "@admin",
+			"Официальный канал администратора платформы.",
+			"https://i.pravatar.cc/200?img=12", "https://picsum.photos/seed/c1banner/1600/300", 12400},
+		{"c2c2c2c2-2222-2222-2222-222222222222", "22222222-2222-2222-2222-222222222222", "TechGuru", "@tech_guru",
+			"Обзоры смартфонов и ноутбуков.",
+			"https://i.pravatar.cc/200?img=33", "https://picsum.photos/seed/c2banner/1600/300", 384200},
+		{"c3c3c3c3-3333-3333-3333-333333333333", "33333333-3333-3333-3333-333333333333", "MusicMaster", "@music_master",
+			"Клипы, обзоры альбомов.",
+			"https://i.pravatar.cc/200?img=47", "https://picsum.photos/seed/c3banner/1600/300", 1205000},
+		{"c4c4c4c4-4444-4444-4444-444444444444", "44444444-4444-4444-4444-444444444444", "GamerPro", "@gamer_pro",
+			"Стримы и прохождения.",
+			"https://i.pravatar.cc/200?img=5", "https://picsum.photos/seed/c4banner/1600/300", 762300},
+		{"c5c5c5c5-5555-5555-5555-555555555555", "55555555-5555-5555-5555-555555555555", "EduChannel", "@edu_channel",
+			"Сложное простыми словами.",
+			"https://i.pravatar.cc/200?img=20", "https://picsum.photos/seed/c5banner/1600/300", 98400},
+		{"c6c6c6c6-6666-6666-6666-666666666666", "66666666-6666-6666-6666-666666666666", "SportZone", "@sport_zone",
+			"Тренировки и мотивация.",
+			"https://i.pravatar.cc/200?img=15", "https://picsum.photos/seed/c6banner/1600/300", 54120},
+		{"c7c7c7c7-7777-7777-7777-777777777777", "77777777-7777-7777-7777-777777777777", "Иван о технологиях", "@ivan",
+			"Разработка, обзоры IDE, советы для начинающих.",
+			"https://i.pravatar.cc/200?img=64", "https://picsum.photos/seed/c7banner/1600/300", 12400},
+		{"c8c8c8c8-8888-8888-8888-888888888888", "88888888-8888-8888-8888-888888888888", "CookingMaster", "@cooking",
+			"Кулинарные рецепты и кухонные лайфхаки.",
+			"https://i.pravatar.cc/200?img=44", "https://picsum.photos/seed/c8banner/1600/300", 76300},
+		{"c9c9c9c9-9999-9999-9999-999999999999", "99999999-9999-9999-9999-999999999999", "TravelDiary", "@travel",
+			"Путешествия, маршруты и приключения.",
+			"https://i.pravatar.cc/200?img=51", "https://picsum.photos/seed/c9banner/1600/300", 142800},
+		{"cacacaca-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "ArtStudio", "@art_studio",
+			"Уроки рисования и обзоры выставок.",
+			"https://i.pravatar.cc/200?img=22", "https://picsum.photos/seed/c10banner/1600/300", 31400},
+	}
+	for _, c := range channels {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO channels(id, owner_id, name, handle, description, avatar_url, banner_url, subscribers_count)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			c.id, c.ownerID, c.name, c.handle, c.desc, c.avatar, c.banner, c.subs); err != nil {
+			return fmt.Errorf("seed channels: %w", err)
+		}
+	}
+
+	// Видео, комментарии, просмотры и реакции НЕ генерируются —
+	// они появятся только после реальных загрузок и действий пользователей.
+	now := time.Now().UTC()
+
+	// ---------------- Subscriptions ----------------
+	subs := []struct {
+		subscriberID, channelID string
+		daysAgo                 int
+	}{
+		{defaultUserID, "c2c2c2c2-2222-2222-2222-222222222222", 50},
+		{defaultUserID, "c3c3c3c3-3333-3333-3333-333333333333", 45},
+		{defaultUserID, "c5c5c5c5-5555-5555-5555-555555555555", 20},
+	}
+	for _, s := range subs {
+		created := now.AddDate(0, 0, -s.daysAgo)
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO subscriptions(subscriber_id, channel_id, created_at) VALUES ($1, $2, $3)`,
+			s.subscriberID, s.channelID, created); err != nil {
+			return fmt.Errorf("seed subscriptions: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO subscription_events(subscriber_id, channel_id, action, created_at)
+			VALUES ($1, $2, 'subscribe', $3)`,
+			s.subscriberID, s.channelID, created); err != nil {
+			return fmt.Errorf("seed sub events: %w", err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}

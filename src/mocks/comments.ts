@@ -1,0 +1,60 @@
+import type { Comment } from '@/shared/types'
+
+export const comments: Comment[] = [
+  {
+    id: 'cm1',
+    videoId: 'v1',
+    authorId: 'u2',
+    text: 'Спасибо за подробный гайд! Очень помогло разобраться с серверными компонентами.',
+    likes: 42,
+    createdAt: '2026-05-21T11:30:00Z',
+  },
+  {
+    id: 'cm2',
+    videoId: 'v1',
+    authorId: 'u4',
+    text: 'А что насчёт интеграции с TanStack Query? Будет следующее видео?',
+    likes: 18,
+    createdAt: '2026-05-21T15:45:00Z',
+  },
+  {
+    id: 'cm3',
+    videoId: 'v1',
+    authorId: 'u5',
+    text: 'Отличное качество подачи материала, подписался!',
+    likes: 7,
+    createdAt: '2026-05-22T08:10:00Z',
+  },
+  {
+    id: 'cm4',
+    videoId: 'v2',
+    authorId: 'u3',
+    text: 'Камера действительно крутая, ждал этого обзора.',
+    likes: 124,
+    createdAt: '2026-05-22T16:00:00Z',
+  },
+  {
+    id: 'cm5',
+    videoId: 'v2',
+    authorId: 'u1',
+    text: 'Стоит ли своих денег? Думаю взять.',
+    likes: 32,
+    createdAt: '2026-05-23T10:20:00Z',
+  },
+  {
+    id: 'cm6',
+    videoId: 'v3',
+    authorId: 'u4',
+    text: 'Топ-1 — мой главный хит лета, согласен полностью.',
+    likes: 215,
+    createdAt: '2026-05-19T19:30:00Z',
+  },
+  {
+    id: 'cm7',
+    videoId: 'v4',
+    authorId: 'u2',
+    text: 'Финал просто эпичный! Спасибо за прохождение.',
+    likes: 88,
+    createdAt: '2026-05-19T01:00:00Z',
+  },
+]

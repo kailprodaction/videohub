@@ -1,0 +1,112 @@
+// Package server собирает chi.Router из набора хендлеров.
+package server
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+
+	authpkg "videohub/internal/auth"
+	"videohub/internal/config"
+	"videohub/internal/handlers"
+)
+
+func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
+	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   cfg.CORSOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	// JWT parsed-but-optional: дальше отдельные группы применяют RequireAuth/RequireAdmin.
+	r.Use(authpkg.Middleware(cfg.JWTSecret))
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+
+	// Статика: /uploads/MP4/*, /uploads/PNG/*
+	staticAbs, _ := filepath.Abs(cfg.UploadsDir)
+	_ = os.MkdirAll(filepath.Join(staticAbs, "MP4"), 0o755)
+	_ = os.MkdirAll(filepath.Join(staticAbs, "PNG"), 0o755)
+	fs := http.StripPrefix("/uploads/", http.FileServer(http.Dir(staticAbs)))
+	r.Handle("/uploads/*", fs)
+
+	r.Route("/api", func(r chi.Router) {
+		// ---------- Авторизация (всё публично) ----------
+		r.Post("/auth/register", h.AuthRegister)
+		r.Post("/auth/register/verify", h.AuthRegisterVerify)
+		r.Post("/auth/login", h.AuthLogin)
+		r.Get("/auth/me", h.AuthMe)
+
+		// ---------- Публичные read-only эндпоинты ----------
+		r.Get("/videos", h.ListVideos)
+		r.Get("/videos/recommended", h.Recommended)
+		r.Get("/videos/{id}", h.GetVideo)
+		r.Get("/videos/{id}/recommendations", h.Recommendations)
+		r.Get("/videos/{id}/comments", h.ListComments)
+		r.Post("/videos/{id}/views", h.RegisterView) // считаем просмотры без логина
+
+		r.Get("/channels", h.ListChannels)
+		r.Get("/channels/{id}", h.GetChannel)
+		r.Get("/channels/{id}/stats", h.ChannelStats)
+		r.Get("/channels/by-owner/{userId}", h.GetChannelByOwner)
+
+		r.Get("/users", h.ListUsers)
+		r.Get("/users/{id}", h.GetUser)
+
+		// ---------- Требуют авторизации ----------
+		r.Group(func(r chi.Router) {
+			r.Use(authpkg.RequireAuth)
+
+			r.Post("/videos", h.CreateVideo)
+			r.Delete("/videos/{id}", h.DeleteVideo)
+			r.Get("/videos/{id}/reaction", h.GetReaction)
+			r.Post("/videos/{id}/reaction", h.SetReaction)
+			r.Post("/videos/{id}/comments", h.AddComment)
+			r.Delete("/comments/{id}", h.DeleteComment)
+
+			r.Patch("/channels/{id}", h.UpdateChannel)
+			r.Get("/channels/{id}/subscribed", h.IsSubscribed)
+			r.Post("/channels/{id}/subscribe", h.Subscribe)
+			r.Delete("/channels/{id}/subscribe", h.Unsubscribe)
+
+			r.Get("/subscriptions", h.ListSubscriptions)
+
+			r.Get("/users/me", h.GetMe)
+			r.Patch("/users/me", h.UpdateMe)
+
+			r.Post("/upload/video", h.UploadVideo)
+			r.Post("/upload/image", h.UploadImage)
+		})
+
+		// ---------- Только админ ----------
+		r.Group(func(r chi.Router) {
+			r.Use(authpkg.RequireAuth, authpkg.RequireAdmin)
+
+			r.Get("/admin/stats", h.PlatformStats)
+			r.Get("/admin/comments", h.AdminListComments)
+			r.Post("/admin/users/{id}/block", h.AdminBlockUser)
+			r.Post("/admin/channels/{id}/stats", h.AdminAdjustStats)
+			r.Post("/admin/videos/{id}/stats", h.AdminAdjustVideoStats)
+		})
+	})
+
+	return r
+}

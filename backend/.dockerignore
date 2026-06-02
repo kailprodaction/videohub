@@ -1,0 +1,11 @@
+.env
+.env.local
+bin/
+uploads/MP4/*
+uploads/PNG/*
+!uploads/MP4/.gitkeep
+!uploads/PNG/.gitkeep
+*.log
+.git
+.idea
+.vscode

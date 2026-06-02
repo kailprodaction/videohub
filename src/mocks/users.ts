@@ -1,0 +1,67 @@
+import type { User } from '@/shared/types'
+
+export const users: User[] = [
+  {
+    id: 'u1',
+    username: 'me',
+    displayName: 'Иван Петров',
+    email: 'me@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=12',
+    bio: 'Снимаю видео о технологиях и программировании.',
+    role: 'admin',
+    createdAt: '2024-01-15T10:00:00Z',
+  },
+  {
+    id: 'u2',
+    username: 'tech_guru',
+    displayName: 'TechGuru',
+    email: 'tech@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=33',
+    bio: 'Обзоры гаджетов и новинок.',
+    role: 'user',
+    createdAt: '2024-02-10T10:00:00Z',
+  },
+  {
+    id: 'u3',
+    username: 'music_master',
+    displayName: 'MusicMaster',
+    email: 'music@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=47',
+    bio: 'Музыкальные клипы и обзоры альбомов.',
+    role: 'user',
+    createdAt: '2024-03-01T10:00:00Z',
+  },
+  {
+    id: 'u4',
+    username: 'gamer_pro',
+    displayName: 'GamerPro',
+    email: 'gamer@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=5',
+    bio: 'Прохождения и обзоры новых игр.',
+    role: 'user',
+    createdAt: '2024-04-20T10:00:00Z',
+  },
+  {
+    id: 'u5',
+    username: 'edu_channel',
+    displayName: 'EduChannel',
+    email: 'edu@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=20',
+    bio: 'Образовательные ролики по математике и физике.',
+    role: 'user',
+    createdAt: '2024-05-05T10:00:00Z',
+  },
+  {
+    id: 'u6',
+    username: 'sport_zone',
+    displayName: 'SportZone',
+    email: 'sport@videohub.local',
+    avatarUrl: 'https://i.pravatar.cc/200?img=15',
+    bio: 'Спортивные обзоры и тренировки.',
+    role: 'user',
+    createdAt: '2024-06-12T10:00:00Z',
+    blocked: false,
+  },
+]
+
+export const CURRENT_USER_ID = 'u1'
