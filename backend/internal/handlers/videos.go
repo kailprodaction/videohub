@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -81,6 +82,7 @@ func (h *Handlers) CreateVideo(w http.ResponseWriter, r *http.Request) {
 	if req.Tags == nil {
 		req.Tags = []string{}
 	}
+	req.Tags = normalizeTags(req.Tags)
 	v, err := h.Store.CreateVideo(r.Context(), models.Video{
 		ChannelID:    req.ChannelID,
 		Title:        req.Title,
@@ -180,4 +182,22 @@ func fallback(s, def string) string {
 		return def
 	}
 	return s
+}
+
+func normalizeTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		tag = strings.TrimSpace(strings.TrimLeft(tag, "#"))
+		if tag == "" {
+			continue
+		}
+		key := strings.ToLower(tag)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, tag)
+	}
+	return out
 }

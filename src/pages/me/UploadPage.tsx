@@ -33,6 +33,31 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>
 
+function getVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    const url = URL.createObjectURL(file)
+
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url)
+      resolve(Math.max(0, Math.round(video.duration)))
+    }
+    video.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Could not read video duration'))
+    }
+    video.src = url
+  })
+}
+
+function parseTags(raw = ''): string[] {
+  return raw
+    .split(/[,\s]+/)
+    .map((tag) => tag.trim().replace(/^#+/, ''))
+    .filter(Boolean)
+}
+
 export function UploadPage() {
   const navigate = useNavigate()
   const [videoFile, setVideoFile] = useState<File | null>(null)
@@ -61,6 +86,7 @@ export function UploadPage() {
       if (!videoFile) throw new Error('Выберите видеофайл')
       if (!thumbFile) throw new Error('Выберите превью')
       if (!channel) throw new Error('Канал не найден')
+      const durationSec = await getVideoDuration(videoFile)
       const [videoUrl, thumbUrl] = await Promise.all([
         uploadVideoFile(videoFile),
         uploadImageFile(thumbFile),
@@ -71,9 +97,10 @@ export function UploadPage() {
         description: data.description ?? '',
         thumbnailUrl: thumbUrl,
         videoFileUrl: videoUrl,
+        durationSec,
         category: data.category as Category,
         visibility: data.visibility as Visibility,
-        tags: data.tags?.split(',').map((t) => t.trim()).filter(Boolean),
+        tags: parseTags(data.tags),
       })
     },
     onSuccess: () => navigate('/me/videos'),
@@ -161,8 +188,8 @@ export function UploadPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Теги (через запятую)</label>
-            <Input {...register('tags')} placeholder="react, tutorial, 2026" />
+            <label className="block text-sm font-medium mb-1">Теги</label>
+            <Input {...register('tags')} placeholder="#react #tutorial #2026" />
           </div>
         </div>
 

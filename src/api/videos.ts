@@ -66,6 +66,7 @@ interface UploadVideoInput {
   description: string
   thumbnailUrl: string
   videoFileUrl: string
+  durationSec: number
   category: Video['category']
   visibility: Video['visibility']
   tags?: string[]
@@ -80,7 +81,7 @@ export async function uploadVideo(input: UploadVideoInput): Promise<Video> {
       description: input.description,
       thumbnailUrl: input.thumbnailUrl,
       videoUrl: input.videoFileUrl,
-      durationSec: 60,
+      durationSec: input.durationSec,
       category: input.category,
       visibility: input.visibility,
       tags: input.tags ?? [],

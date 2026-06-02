@@ -112,7 +112,7 @@ export function WatchPage() {
             <span>{formatDate(video.uploadedAt)}</span>
             {video.tags.length > 0 && (
               <span className="text-muted">
-                {video.tags.map((t) => `#${t}`).join(' ')}
+                {video.tags.map((t) => `#${t.replace(/^#+/, '')}`).join(' ')}
               </span>
             )}
           </div>

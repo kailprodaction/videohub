@@ -10,6 +10,10 @@ interface VideoCardProps {
   layout?: 'grid' | 'compact'
 }
 
+function formatTags(tags: string[]): string {
+  return tags.map((tag) => `#${tag.replace(/^#+/, '')}`).join(' ')
+}
+
 export function VideoCard({ video, layout = 'grid' }: VideoCardProps) {
   const { data: channel } = useQuery({
     queryKey: ['channel', video.channelId],
@@ -35,6 +39,7 @@ export function VideoCard({ video, layout = 'grid' }: VideoCardProps) {
             {video.title}
           </h4>
           <p className="text-xs text-muted mt-1 truncate">{channel?.name}</p>
+          {video.tags.length > 0 && <p className="text-xs text-brand truncate">{formatTags(video.tags)}</p>}
           <p className="text-xs text-muted">
             {formatNumber(video.views)} просмотров · {timeAgo(video.uploadedAt)}
           </p>
@@ -75,6 +80,7 @@ export function VideoCard({ video, layout = 'grid' }: VideoCardProps) {
           >
             {channel?.name ?? '—'}
           </Link>
+          {video.tags.length > 0 && <p className="text-sm text-brand truncate">{formatTags(video.tags)}</p>}
           <p className="text-sm text-muted">
             {formatNumber(video.views)} просмотров · {timeAgo(video.uploadedAt)}
           </p>
