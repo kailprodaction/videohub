@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -8,17 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"videohub/internal/store"
 )
 
-// allowedVideoExt = mp4, webm — кладём в uploads/MP4.
-// allowedImageExt = png, jpg/jpeg, webp — кладём в uploads/PNG.
 var (
 	allowedVideoExt = map[string]bool{".mp4": true, ".webm": true}
 	allowedImageExt = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".webp": true}
 )
 
-// POST /api/upload/video  (multipart/form-data, поле "file")
 func (h *Handlers) UploadVideo(w http.ResponseWriter, r *http.Request) {
 	url, err := h.saveUpload(r, "MP4", h.Cfg.MaxVideoBytes, allowedVideoExt)
 	if err != nil {
@@ -28,8 +29,6 @@ func (h *Handlers) UploadVideo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"url": url})
 }
 
-// POST /api/upload/ad (multipart/form-data, поле "file") — рекламные ролики.
-// Тот же формат и лимит, что у обычных видео, но кладутся в uploads/ADS.
 func (h *Handlers) UploadAd(w http.ResponseWriter, r *http.Request) {
 	url, err := h.saveUpload(r, "ADS", h.Cfg.MaxVideoBytes, allowedVideoExt)
 	if err != nil {
@@ -39,7 +38,6 @@ func (h *Handlers) UploadAd(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"url": url})
 }
 
-// POST /api/upload/image  (multipart/form-data, поле "file")
 func (h *Handlers) UploadImage(w http.ResponseWriter, r *http.Request) {
 	url, err := h.saveUpload(r, "PNG", h.Cfg.MaxImageBytes, allowedImageExt)
 	if err != nil {
@@ -49,8 +47,26 @@ func (h *Handlers) UploadImage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"url": url})
 }
 
+func (h *Handlers) ServeUpload(w http.ResponseWriter, r *http.Request) {
+	subdir := chi.URLParam(r, "subdir")
+	fileName := chi.URLParam(r, "file")
+	uploadPath := subdir + "/" + fileName
+
+	file, err := h.Store.GetUploadFile(r.Context(), uploadPath)
+	if err == nil {
+		w.Header().Set("Content-Type", file.ContentType)
+		http.ServeContent(w, r, fileName, file.CreatedAt, bytes.NewReader(file.Data))
+		return
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusInternalServerError, "upload", err.Error())
+		return
+	}
+
+	http.ServeFile(w, r, filepath.Join(h.Cfg.UploadsDir, uploadPath))
+}
+
 func (h *Handlers) saveUpload(r *http.Request, subdir string, maxBytes int64, allowed map[string]bool) (string, error) {
-	// 1) Ограничим размер запроса на уровне reader — Multipart парсер не превысит лимит.
 	r.Body = http.MaxBytesReader(nil, r.Body, maxBytes+1024)
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -77,37 +93,58 @@ func (h *Handlers) saveUpload(r *http.Request, subdir string, maxBytes int64, al
 		return "", uploadError{status: http.StatusUnsupportedMediaType, msg: "unsupported file extension: " + ext}
 	}
 
-	// 2) Создадим целевую папку, если её ещё нет.
-	dirAbs, err := filepath.Abs(filepath.Join(h.Cfg.UploadsDir, subdir))
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dirAbs, 0o755); err != nil {
-		return "", err
-	}
-
-	// 3) Сгенерируем уникальное имя.
-	fileName := uuid.NewString() + ext
-	full := filepath.Join(dirAbs, fileName)
-
-	dst, err := os.Create(full)
-	if err != nil {
-		return "", err
-	}
-	defer dst.Close()
-
-	written, err := io.Copy(dst, file)
-	if err != nil {
-		_ = os.Remove(full)
-		return "", err
-	}
-	if written > maxBytes {
-		_ = os.Remove(full)
+	if int64(len(data)) > maxBytes {
 		return "", uploadError{status: http.StatusRequestEntityTooLarge, msg: "file too large"}
 	}
 
-	publicURL := strings.TrimRight(h.Cfg.PublicBaseURL, "/") + "/uploads/" + subdir + "/" + fileName
-	return publicURL, nil
+	fileName := uuid.NewString() + ext
+	uploadPath := subdir + "/" + fileName
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+
+	if err := h.Store.SaveUploadFile(r.Context(), store.UploadFile{
+		Path:        uploadPath,
+		ContentType: contentType,
+		SizeBytes:   int64(len(data)),
+		Data:        data,
+	}); err != nil {
+		return "", err
+	}
+
+	if err := h.cacheUploadOnDisk(subdir, fileName, data); err != nil {
+		return strings.TrimRight(h.Cfg.PublicBaseURL, "/") + "/uploads/" + uploadPath, nil
+	}
+
+	return strings.TrimRight(h.Cfg.PublicBaseURL, "/") + "/uploads/" + uploadPath, nil
+}
+
+func (h *Handlers) cacheUploadOnDisk(subdir, fileName string, data []byte) error {
+	dirAbs, err := filepath.Abs(filepath.Join(h.Cfg.UploadsDir, subdir))
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dirAbs, 0o755); err != nil {
+		return err
+	}
+
+	full := filepath.Join(dirAbs, fileName)
+	dst, err := os.Create(full)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := dst.Write(data); err != nil {
+		_ = os.Remove(full)
+		return err
+	}
+	return nil
 }
 
 type uploadError struct {

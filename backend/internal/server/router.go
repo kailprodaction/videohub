@@ -48,6 +48,7 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 	_ = os.MkdirAll(filepath.Join(staticAbs, "PNG"), 0o755)
 	_ = os.MkdirAll(filepath.Join(staticAbs, "ADS"), 0o755)
 	fs := http.StripPrefix("/uploads/", http.FileServer(http.Dir(staticAbs)))
+	r.Get("/uploads/{subdir}/{file}", h.ServeUpload)
 	r.Handle("/uploads/*", fs)
 
 	r.Route("/api", func(r chi.Router) {
