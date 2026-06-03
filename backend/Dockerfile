@@ -25,7 +25,7 @@ COPY --from=build /out/videohub-server /app/videohub-server
 COPY migrations /app/migrations
 
 # uploads — volume; создаём заранее, чтобы права были у app.
-RUN mkdir -p /app/uploads/MP4 /app/uploads/PNG && chown -R app:app /app
+RUN mkdir -p /app/uploads/MP4 /app/uploads/PNG /app/uploads/ADS && chown -R app:app /app
 
 USER app
 

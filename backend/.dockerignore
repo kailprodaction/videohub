@@ -3,8 +3,10 @@
 bin/
 uploads/MP4/*
 uploads/PNG/*
+uploads/ADS/*
 !uploads/MP4/.gitkeep
 !uploads/PNG/.gitkeep
+!uploads/ADS/.gitkeep
 *.log
 .git
 .idea

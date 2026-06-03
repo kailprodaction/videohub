@@ -7,8 +7,15 @@ export interface PremiumResult {
   message: string
 }
 
-export function buyPremium(): Promise<PremiumResult> {
-  return api<PremiumResult>('/api/premium/buy', { method: 'POST' })
+export interface CardPaymentPayload {
+  cardNumber: string
+  expiry: string
+  cvc: string
+  brand: 'visa' | 'mastercard'
+}
+
+export function buyPremium(payload: CardPaymentPayload): Promise<PremiumResult> {
+  return api<PremiumResult>('/api/premium/buy', { method: 'POST', body: payload })
 }
 
 export function adminSetPremium(
@@ -42,10 +49,16 @@ export interface PayoutResult {
   message: string
 }
 
-export function payout(amount: number, cardNumber: string): Promise<PayoutResult> {
+export function payout(
+  amount: number,
+  cardNumber: string,
+  expiry: string,
+  cvc: string,
+  brand: 'visa' | 'mastercard',
+): Promise<PayoutResult> {
   return api<PayoutResult>('/api/channels/me/payout', {
     method: 'POST',
-    body: { amount, cardNumber },
+    body: { amount, cardNumber, expiry, cvc, brand },
   })
 }
 

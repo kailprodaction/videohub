@@ -20,7 +20,17 @@ import (
 // POST /api/premium/buy — демо-покупка премиума текущим пользователем.
 func (h *Handlers) BuyPremium(w http.ResponseWriter, r *http.Request) {
 	uid := authpkg.UserID(r)
-	user, tx, err := h.Store.BuyPremium(r.Context(), uid)
+	var req cardPaymentRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	_, last4, err := validatePaymentCard(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation", err.Error())
+		return
+	}
+	user, tx, err := h.Store.BuyPremium(r.Context(), uid, last4)
 	if handleStoreErr(w, err) {
 		return
 	}
@@ -115,6 +125,9 @@ func (h *Handlers) PayoutMyChannel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Amount     int64  `json:"amount"`
 		CardNumber string `json:"cardNumber"`
+		Expiry     string `json:"expiry"`
+		CVC        string `json:"cvc"`
+		Brand      string `json:"brand"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -124,12 +137,16 @@ func (h *Handlers) PayoutMyChannel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation", "amount must be positive")
 		return
 	}
-	digits := stripNonDigits(req.CardNumber)
-	if len(digits) < 12 || len(digits) > 19 {
-		writeError(w, http.StatusBadRequest, "validation", "card number length must be 12..19 digits")
+	_, last4, err := validatePaymentCard(cardPaymentRequest{
+		CardNumber: req.CardNumber,
+		Expiry:     req.Expiry,
+		CVC:        req.CVC,
+		Brand:      req.Brand,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation", err.Error())
 		return
 	}
-	last4 := digits[len(digits)-4:]
 
 	channel, err := h.Store.GetChannelByOwner(r.Context(), uid)
 	if handleStoreErr(w, err) {
@@ -182,4 +199,84 @@ func stripNonDigits(s string) string {
 		}
 	}
 	return b.String()
+}
+
+type cardPaymentRequest struct {
+	CardNumber string `json:"cardNumber"`
+	Expiry     string `json:"expiry"`
+	CVC        string `json:"cvc"`
+	Brand      string `json:"brand"`
+}
+
+func validatePaymentCard(req cardPaymentRequest) (string, string, error) {
+	digits := stripNonDigits(req.CardNumber)
+	if len(digits) != 16 {
+		return "", "", errors.New("card number must contain 16 digits")
+	}
+	brand := strings.ToLower(strings.TrimSpace(req.Brand))
+	actualBrand := detectCardBrand(digits)
+	if actualBrand == "" {
+		return "", "", errors.New("only Visa and Mastercard are supported")
+	}
+	if brand != "" && brand != actualBrand {
+		return "", "", errors.New("card brand does not match card number")
+	}
+	if !luhnValid(digits) {
+		return "", "", errors.New("card number is invalid")
+	}
+	if !expiryValid(req.Expiry) {
+		return "", "", errors.New("card expiry is invalid")
+	}
+	if len(stripNonDigits(req.CVC)) != 3 {
+		return "", "", errors.New("CVC must contain 3 digits")
+	}
+	return digits, digits[len(digits)-4:], nil
+}
+
+func detectCardBrand(digits string) string {
+	if strings.HasPrefix(digits, "4") {
+		return "visa"
+	}
+	if len(digits) < 4 {
+		return ""
+	}
+	firstTwo, _ := strconv.Atoi(digits[:2])
+	firstFour, _ := strconv.Atoi(digits[:4])
+	if (firstTwo >= 51 && firstTwo <= 55) || (firstFour >= 2221 && firstFour <= 2720) {
+		return "mastercard"
+	}
+	return ""
+}
+
+func luhnValid(digits string) bool {
+	sum := 0
+	double := false
+	for i := len(digits) - 1; i >= 0; i-- {
+		n := int(digits[i] - '0')
+		if double {
+			n *= 2
+			if n > 9 {
+				n -= 9
+			}
+		}
+		sum += n
+		double = !double
+	}
+	return sum%10 == 0
+}
+
+func expiryValid(expiry string) bool {
+	digits := stripNonDigits(expiry)
+	if len(digits) != 4 {
+		return false
+	}
+	month, _ := strconv.Atoi(digits[:2])
+	year, _ := strconv.Atoi("20" + digits[2:])
+	if month < 1 || month > 12 {
+		return false
+	}
+	now := time.Now()
+	currentMonth := int(now.Month())
+	currentYear := now.Year()
+	return year > currentYear || (year == currentYear && month >= currentMonth)
 }

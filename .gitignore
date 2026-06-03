@@ -26,8 +26,10 @@ backend/*.exe
 # Загруженные пользователем файлы — runtime data, не код
 backend/uploads/MP4/*
 backend/uploads/PNG/*
+backend/uploads/ADS/*
 !backend/uploads/MP4/.gitkeep
 !backend/uploads/PNG/.gitkeep
+!backend/uploads/ADS/.gitkeep
 
 # pgadmin локальное состояние
 pgadmin/storage/

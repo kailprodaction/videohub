@@ -45,7 +45,7 @@ func (s *Store) AddChannelEarning(ctx context.Context, videoID string, amount in
 
 // BuyPremium включает премиум на PremiumDays дней (продлевает, если уже был
 // активный) и создаёт SUCCESS-транзакцию PREMIUM_PURCHASE.
-func (s *Store) BuyPremium(ctx context.Context, userID string) (*models.User, *models.Transaction, error) {
+func (s *Store) BuyPremium(ctx context.Context, userID string, cardLast4 string) (*models.User, *models.Transaction, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -71,10 +71,10 @@ func (s *Store) BuyPremium(ctx context.Context, userID string) (*models.User, *m
 	description := "Покупка премиум-подписки на " + strconv.Itoa(PremiumDays) + " дней"
 	var t models.Transaction
 	if err := scanTx(tx.QueryRow(ctx, `
-		INSERT INTO transactions(user_id, type, amount, status, description)
-		VALUES ($1, 'PREMIUM_PURCHASE', $2, 'SUCCESS', $3)
+		INSERT INTO transactions(user_id, type, amount, status, description, card_last4)
+		VALUES ($1, 'PREMIUM_PURCHASE', $2, 'SUCCESS', $3, $4)
 		RETURNING `+txColumns,
-		userID, PremiumPriceTenge, description), &t); err != nil {
+		userID, PremiumPriceTenge, description, cardLast4), &t); err != nil {
 		return nil, nil, err
 	}
 

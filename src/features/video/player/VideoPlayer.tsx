@@ -25,12 +25,19 @@ interface VideoPlayerProps {
 
 const AD_MAX_SECONDS = 30
 const AD_SKIPPABLE_AFTER = 5
+const SPACE_HOLD_MS = 220
+const KEY_SEEK_SECONDS = 5
 
 export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: VideoPlayerProps) {
   const playerRef = useRef<ReactPlayer | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement | null>(null)
   const hideControlsTimer = useRef<number | null>(null)
+  const spaceHoldTimer = useRef<number | null>(null)
+  const spaceHoldActive = useRef(false)
+  const speedBeforeSpaceHold = useRef(1)
+  const playbackRateRef = useRef(1)
+  const durationRef = useRef(0)
 
   const volume = usePlayerStore((s) => s.volume)
   const setVolume = usePlayerStore((s) => s.setVolume)
@@ -52,6 +59,8 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
   const [showSettings, setShowSettings] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [firstPlayed, setFirstPlayed] = useState(false)
+  const [spaceBoosting, setSpaceBoosting] = useState(false)
+  const [progressHover, setProgressHover] = useState({ visible: false, fraction: 0 })
 
   const availableQualities = video.sources.map((s) => s.quality)
   const hasMultiQualities = availableQualities.length > 1
@@ -61,6 +70,14 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
   const isAd = phase === 'ad'
   const canSkipAd = isAd && adSeconds >= AD_SKIPPABLE_AFTER
   const skipInLabel = Math.max(0, Math.ceil(AD_SKIPPABLE_AFTER - adSeconds))
+
+  useEffect(() => {
+    playbackRateRef.current = playbackRate
+  }, [playbackRate])
+
+  useEffect(() => {
+    durationRef.current = duration
+  }, [duration])
 
   useEffect(() => {
     function onChange() {
@@ -112,18 +129,27 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
     return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
   }
 
+  function updateProgressHover(e: MouseEvent | React.MouseEvent) {
+    if (isAd) return
+    setProgressHover({ visible: true, fraction: getFractionFromEvent(e) })
+  }
+
   function handleProgressMouseDown(e: React.MouseEvent) {
     if (isAd) return
     setSeeking(true)
     const fraction = getFractionFromEvent(e)
     setPlayed(fraction)
+    updateProgressHover(e)
     function onMove(ev: MouseEvent) {
-      setPlayed(getFractionFromEvent(ev))
+      const nextFraction = getFractionFromEvent(ev)
+      setPlayed(nextFraction)
+      setProgressHover({ visible: true, fraction: nextFraction })
     }
     function onUp(ev: MouseEvent) {
       const f = getFractionFromEvent(ev)
       setSeeking(false)
       playerRef.current?.seekTo(f, 'fraction')
+      setProgressHover({ visible: false, fraction: f })
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -140,6 +166,86 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
       if (!isAd) onFirstPlay?.()
     }
   }
+
+  function seekBy(seconds: number) {
+    if (isAd) return
+    const total = durationRef.current || duration
+    if (!total) return
+    const current = playerRef.current?.getCurrentTime() ?? played * total
+    const next = Math.max(0, Math.min(total, current + seconds))
+    playerRef.current?.seekTo(next, 'seconds')
+    setPlayed(next / total)
+    setShowControls(true)
+  }
+
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
+    }
+
+    function startSpaceHold() {
+      if (isAd || spaceHoldActive.current) return
+      spaceHoldActive.current = true
+      speedBeforeSpaceHold.current = playbackRateRef.current
+      setPlaying(true)
+      setPlaybackRate(2)
+      setSpaceBoosting(true)
+      setShowControls(true)
+      if (!firstPlayed) {
+        setFirstPlayed(true)
+        onFirstPlay?.()
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (isTypingTarget(e.target)) return
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        e.preventDefault()
+        if (!e.repeat) seekBy(e.code === 'ArrowRight' ? KEY_SEEK_SECONDS : -KEY_SEEK_SECONDS)
+        return
+      }
+      if (e.code !== 'Space') return
+      e.preventDefault()
+      if (e.repeat || spaceHoldTimer.current) return
+      spaceHoldActive.current = false
+      spaceHoldTimer.current = window.setTimeout(startSpaceHold, SPACE_HOLD_MS)
+    }
+
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.code !== 'Space' || isTypingTarget(e.target)) return
+      e.preventDefault()
+      if (spaceHoldTimer.current) {
+        window.clearTimeout(spaceHoldTimer.current)
+        spaceHoldTimer.current = null
+      }
+      if (spaceHoldActive.current) {
+        spaceHoldActive.current = false
+        setSpaceBoosting(false)
+        setPlaybackRate(speedBeforeSpaceHold.current)
+        return
+      }
+      togglePlay()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      if (spaceHoldTimer.current) {
+        window.clearTimeout(spaceHoldTimer.current)
+        spaceHoldTimer.current = null
+      }
+      if (spaceHoldActive.current) {
+        spaceHoldActive.current = false
+        setSpaceBoosting(false)
+        setPlaybackRate(speedBeforeSpaceHold.current)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAd, muted, volume, firstPlayed, played, duration])
 
   function finishAd() {
     setPhase('main')
@@ -165,6 +271,11 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
 
   const currentTime = played * duration
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
+
+  function handleVideoClick(e: React.MouseEvent) {
+    if (e.button !== 0) return
+    togglePlay()
+  }
 
   return (
     <div
@@ -203,10 +314,25 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
         config={{ file: { attributes: { controlsList: 'nodownload', playsInline: true } } }}
       />
 
+      <button
+        type="button"
+        onClick={handleVideoClick}
+        className="absolute inset-0 z-10 cursor-pointer"
+        aria-label={playing ? 'Пауза' : 'Воспроизвести'}
+      />
+
+      {spaceBoosting && (
+        <div className="absolute top-4 inset-x-0 z-40 flex justify-center pointer-events-none">
+          <div className="h-8 min-w-12 px-3 rounded-full bg-black/55 border border-white/10 text-white/95 text-sm font-bold grid place-items-center shadow-lg">
+            2x
+          </div>
+        </div>
+      )}
+
       {!playing && (
         <button
           onClick={togglePlay}
-          className="absolute inset-0 grid place-items-center bg-black/30 transition-opacity"
+          className="absolute inset-0 z-20 grid place-items-center bg-black/30 transition-opacity"
           aria-label="Воспроизвести"
         >
           <div className="w-20 h-20 rounded-full bg-brand/90 grid place-items-center">
@@ -216,31 +342,15 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
       )}
 
       {isAd && (
-        <>
-          <div className="absolute top-3 left-3 bg-brand/95 text-white text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-md max-w-[60%] truncate">
-            Реклама · {preRollAd?.title ?? ''}
-          </div>
-          <div className="absolute top-3 right-3 flex items-center gap-2">
-            {canSkipAd ? (
-              <button
-                onClick={finishAd}
-                className="inline-flex items-center gap-2 bg-black/85 hover:bg-black text-white text-sm px-4 py-2 rounded-md border border-white/20"
-              >
-                Пропустить рекламу
-                <SkipForward className="w-4 h-4" />
-              </button>
-            ) : (
-              <div className="bg-black/75 text-white/90 text-xs px-3 py-1.5 rounded-md">
-                Пропустить можно через {skipInLabel}&nbsp;сек
-              </div>
-            )}
-          </div>
-        </>
+        <div className="absolute top-3 left-3 z-30 bg-brand/95 text-white text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-md max-w-[60%] truncate">
+          Реклама · {preRollAd?.title ?? ''}
+        </div>
       )}
 
       <div
+        onClick={(e) => e.stopPropagation()}
         className={cn(
-          'absolute bottom-0 inset-x-0 px-3 pb-2 pt-8 transition-opacity duration-200',
+          'absolute bottom-0 inset-x-0 z-30 px-3 pb-2 pt-8 transition-opacity duration-200',
           'bg-gradient-to-t from-black/80 via-black/40 to-transparent',
           showControls || !playing ? 'opacity-100' : 'opacity-0 pointer-events-none',
         )}
@@ -254,7 +364,17 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
               : 'bg-white/30 cursor-pointer group/progress hover:h-1.5',
           )}
           onMouseDown={handleProgressMouseDown}
+          onMouseMove={updateProgressHover}
+          onMouseLeave={() => setProgressHover((prev) => ({ ...prev, visible: false }))}
         >
+          {progressHover.visible && !isAd && duration > 0 && (
+            <div
+              className="absolute bottom-3 -translate-x-1/2 rounded bg-black/80 px-2 py-1 text-[11px] font-mono tabular-nums text-white shadow pointer-events-none"
+              style={{ left: `${progressHover.fraction * 100}%` }}
+            >
+              {formatDuration(progressHover.fraction * duration)}
+            </div>
+          )}
           <div className="absolute inset-y-0 left-0 bg-brand rounded" style={{ width: `${played * 100}%` }} />
           {!isAd && (
             <div
@@ -300,7 +420,22 @@ export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: Video
             </span>
           )}
 
-          <div className="ml-auto flex items-center gap-1 relative">
+          <div className="ml-auto flex items-center gap-2 relative">
+            {isAd &&
+              (canSkipAd ? (
+                <button
+                  onClick={finishAd}
+                  className="inline-flex items-center gap-2 bg-white text-black hover:bg-white/90 text-xs sm:text-sm px-3 py-1.5 rounded-md"
+                >
+                  Пропустить
+                  <SkipForward className="w-4 h-4" />
+                </button>
+              ) : (
+                <div className="bg-black/70 text-white/90 text-xs px-3 py-1.5 rounded-md border border-white/10">
+                  Пропуск через {skipInLabel}&nbsp;с
+                </div>
+              ))}
+
             {!isAd && (
               <button
                 onClick={() => setShowSettings((v) => !v)}
