@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Navbar } from './Navbar'
 import { Sidebar } from './Sidebar'
+import { AuthPromptDialog } from '@/features/auth/AuthPrompt'
 
 export function RootLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -14,6 +15,7 @@ export function RootLayout() {
           <Outlet />
         </main>
       </div>
+      <AuthPromptDialog />
     </div>
   )
 }

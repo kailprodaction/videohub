@@ -9,6 +9,8 @@ import { Button } from '@/shared/ui/Button'
 import { Avatar } from '@/shared/ui/Avatar'
 import { useQuery } from '@tanstack/react-query'
 import { getCurrentUser } from '@/api/users'
+import { useIsAuthenticated } from '@/stores/authStore'
+import { requireAuth } from '@/features/auth/AuthPrompt'
 
 const schema = z.object({
   text: z.string().trim().min(1, 'Введите текст').max(500, 'Не более 500 символов'),
@@ -22,7 +24,12 @@ interface CommentFormProps {
 export function CommentForm({ videoId }: CommentFormProps) {
   const qc = useQueryClient()
   const [focused, setFocused] = useState(false)
-  const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: getCurrentUser })
+  const isAuthed = useIsAuthenticated()
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: getCurrentUser,
+    enabled: isAuthed,
+  })
   const {
     register,
     handleSubmit,
@@ -39,17 +46,25 @@ export function CommentForm({ videoId }: CommentFormProps) {
     },
   })
 
+  function onFocus() {
+    if (!requireAuth('Чтобы оставить комментарий, зарегистрируйтесь или войдите.')) return
+    setFocused(true)
+  }
+
   return (
     <form
-      onSubmit={handleSubmit((data) => mutation.mutate(data.text))}
+      onSubmit={handleSubmit((data) => {
+        if (!requireAuth('Чтобы оставить комментарий, зарегистрируйтесь или войдите.')) return
+        mutation.mutate(data.text)
+      })}
       className="flex gap-3"
     >
       <Avatar src={user?.avatarUrl} alt={user?.displayName} size={40} />
       <div className="flex-1">
         <Textarea
           rows={focused ? 3 : 1}
-          placeholder="Добавить комментарий..."
-          onFocus={() => setFocused(true)}
+          placeholder={isAuthed ? 'Добавить комментарий...' : 'Войдите, чтобы оставить комментарий'}
+          onFocus={onFocus}
           {...register('text')}
           className="min-h-[40px]"
         />

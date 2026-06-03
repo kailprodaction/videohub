@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authpkg "videohub/internal/auth"
 	"videohub/internal/models"
 	"videohub/internal/recommend"
 	"videohub/internal/store"
@@ -100,14 +101,18 @@ func (h *Handlers) CreateVideo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, v)
 }
 
-// POST /api/videos/{id}/views — увеличивает счётчик просмотров.
+// POST /api/videos/{id}/views — засчитывает уникальный просмотр.
+// Если пользователь уже смотрел это видео — счётчик не увеличивается.
+// Для анонимных запросов просмотр не засчитывается вовсе
+// (берём id строго из JWT, без fallback на DEFAULT_USER_ID).
 func (h *Handlers) RegisterView(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	uid := h.currentUserID(r)
-	if err := h.Store.RegisterView(r.Context(), id, uid); handleStoreErr(w, err) {
+	uid := authpkg.UserID(r)
+	counted, err := h.Store.RegisterView(r.Context(), id, uid)
+	if handleStoreErr(w, err) {
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]bool{"counted": counted})
 }
 
 // POST /api/videos/{id}/reaction { "reaction": "like" | "dislike" | "" }

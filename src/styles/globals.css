@@ -114,21 +114,33 @@ input[type='range']::-moz-range-thumb {
   background: rgb(var(--color-brand));
 }
 
-/* Кастомный плеер: в полноэкранном режиме растягиваем wrapper на весь экран,
-   снимая фиксированную пропорцию 16:9. */
-.video-wrap:fullscreen {
-  width: 100vw;
-  height: 100vh;
-  aspect-ratio: auto;
+/* Кастомный плеер.
+   react-player оборачивает <video> в собственный div без position absolute.
+   Принудительно растягиваем этот внутренний контейнер на весь wrapper, иначе
+   видео не занимает доступную площадь и видны только наши контролы поверх
+   чёрного фона. */
+.video-wrap {
+  position: relative;
 }
 
-.video-wrap:fullscreen > div {
+.video-wrap > div:first-child {
+  position: absolute;
+  inset: 0;
   width: 100% !important;
   height: 100% !important;
 }
 
-.video-wrap:fullscreen video {
+.video-wrap video {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: #000;
+}
+
+/* В полноэкранном режиме снимаем фиксированную пропорцию 16:9 и
+   растягиваем wrapper на весь экран. */
+.video-wrap:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
 }

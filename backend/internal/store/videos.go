@@ -186,26 +186,43 @@ func (s *Store) AdminAdjustVideoStats(ctx context.Context, videoID string, views
 	return tx.Commit(ctx)
 }
 
-// RegisterView пишет событие в video_views и увеличивает денормализованный счётчик.
-func (s *Store) RegisterView(ctx context.Context, videoID, userID string) error {
+// RegisterView пишет уникальный просмотр: один аккаунт = +1 к видео, даже если
+// пользователь несколько раз открывает страницу. Анонимные открытия счётчик
+// не увеличивают — посчитать уникальность без авторизации нельзя.
+//
+// Возвращает true, если просмотр был засчитан (новый), и false, если уже был.
+func (s *Store) RegisterView(ctx context.Context, videoID, userID string) (bool, error) {
+	if userID == "" {
+		return false, nil
+	}
+
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx)
-	if userID != "" {
-		if _, err := tx.Exec(ctx, `INSERT INTO video_views(video_id, user_id) VALUES ($1, $2)`, videoID, userID); err != nil {
-			return err
-		}
-	} else {
-		if _, err := tx.Exec(ctx, `INSERT INTO video_views(video_id) VALUES ($1)`, videoID); err != nil {
-			return err
-		}
+
+	var already bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM video_views WHERE video_id = $1 AND user_id = $2)`,
+		videoID, userID).Scan(&already); err != nil {
+		return false, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE videos SET views_count = views_count + 1 WHERE id=$1`, videoID); err != nil {
-		return err
+	if already {
+		return false, tx.Commit(ctx)
 	}
-	return tx.Commit(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO video_views(video_id, user_id) VALUES ($1, $2)`,
+		videoID, userID); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE videos SET views_count = views_count + 1 WHERE id = $1`,
+		videoID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }
 
 // -------- helpers ----------

@@ -14,10 +14,13 @@ import { Button } from '@/shared/ui/Button'
 import { Loader, ErrorState } from '@/shared/ui/states'
 import { formatDate, formatNumber, formatSubscribers, formatViews } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/cn'
+import { useIsAuthenticated } from '@/stores/authStore'
+import { requireAuth } from '@/features/auth/AuthPrompt'
 
 export function WatchPage() {
   const { videoId = '' } = useParams()
   const qc = useQueryClient()
+  const isAuthed = useIsAuthenticated()
 
   const { data: video, isLoading, isError, refetch } = useQuery({
     queryKey: ['video', videoId],
@@ -31,6 +34,7 @@ export function WatchPage() {
   const { data: reaction } = useQuery({
     queryKey: ['reaction', videoId],
     queryFn: () => getUserReaction(videoId),
+    enabled: isAuthed,
   })
   const { data: recommended } = useQuery({
     queryKey: ['recommended', videoId],
@@ -46,6 +50,8 @@ export function WatchPage() {
   })
 
   function toggleReaction(next: 'like' | 'dislike') {
+    const verb = next === 'like' ? 'поставить лайк' : 'поставить дизлайк'
+    if (!requireAuth(`Чтобы ${verb}, зарегистрируйтесь или войдите.`)) return
     reactMutation.mutate(reaction === next ? null : next)
   }
 
@@ -63,7 +69,14 @@ export function WatchPage() {
     <div className="px-4 lg:px-6 py-4 lg:flex lg:gap-6 max-w-[1800px] mx-auto">
       <div className="flex-1 min-w-0">
         <div className="rounded-xl overflow-hidden bg-black">
-          <VideoPlayer video={video} onFirstPlay={() => incrementViews(videoId)} />
+          <VideoPlayer
+            video={video}
+            onFirstPlay={() => {
+              // Анонимные просмотры не считаем — backend и так их игнорирует,
+              // но фронт лишний раз не дёргает API.
+              if (isAuthed) void incrementViews(videoId)
+            }}
+          />
         </div>
 
         <h1 className="text-xl font-semibold mt-4">{video.title}</h1>
