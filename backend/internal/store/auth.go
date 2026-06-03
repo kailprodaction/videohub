@@ -142,23 +142,22 @@ func (s *Store) CreateUserWithChannel(ctx context.Context, in CreateUserParams) 
 	}
 	defer tx.Rollback(ctx)
 
-	avatarURL := "https://i.pravatar.cc/200?u=" + in.Email
-
+	// avatar_url / banner_url оставляем пустыми: пользователь сам загрузит аватарку
+	// через личный кабинет. На фронте Avatar-компонент рисует заглушку.
 	var u models.User
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO users (username, display_name, email, avatar_url, bio, role, password_hash)
-		VALUES ($1, $2, $3, $4, '', 'user', NULLIF($5, ''))
+		VALUES ($1, $2, $3, '', '', 'user', NULLIF($4, ''))
 		RETURNING id, username, display_name, email, avatar_url, bio, role, blocked, created_at`,
-		in.Login, in.DisplayName, in.Email, avatarURL, in.PasswordHash).
+		in.Login, in.DisplayName, in.Email, in.PasswordHash).
 		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt); err != nil {
 		return nil, err
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO channels (owner_id, name, handle, description, avatar_url, banner_url)
-		VALUES ($1, $2, '@' || $3, '', $4,
-		        'https://picsum.photos/seed/' || $5 || '/1600/300')`,
-		u.ID, in.DisplayName, in.Login, avatarURL, u.ID); err != nil {
+		VALUES ($1, $2, '@' || $3, '', '', '')`,
+		u.ID, in.DisplayName, in.Login); err != nil {
 		return nil, err
 	}
 

@@ -49,7 +49,9 @@ services:
       AUTH_CODE_TTL_MIN: "10"
       AUTH_EXPOSE_CODE: "true"
     volumes:
-      - uploads_data:/app/uploads
+      # Bind-mount: загруженные файлы лежат в ./backend/uploads на хосте и
+      # переживают любые docker compose down/up -v.
+      - ./backend/uploads:/app/uploads
     ports:
       - "8080:8080"
     depends_on:
@@ -89,7 +91,6 @@ services:
 
 volumes:
   postgres_data:
-  uploads_data:
   pgadmin_data:
 
 networks:
