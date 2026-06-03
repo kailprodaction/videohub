@@ -4,14 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Pencil, Upload as UploadIcon } from 'lucide-react'
+import { Pencil, Upload as UploadIcon, Crown, Wallet, Banknote } from 'lucide-react'
 import { getCurrentUser, updateProfile } from '@/api/users'
 import { getChannelByOwner, updateChannelProfile } from '@/api/channels'
 import { Avatar } from '@/shared/ui/Avatar'
 import { Button } from '@/shared/ui/Button'
 import { Input, Textarea } from '@/shared/ui/Input'
 import { Loader } from '@/shared/ui/states'
-import { formatSubscribers } from '@/shared/lib/format'
+import { formatDate, formatNumber, formatSubscribers } from '@/shared/lib/format'
 
 const schema = z.object({
   displayName: z.string().trim().min(1, 'Введите имя').max(50, 'Не более 50 символов'),
@@ -86,6 +86,40 @@ export function MeDashboard() {
             <UploadIcon className="w-4 h-4" />
             Загрузить видео
           </Button>
+        </Link>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <Link
+          to="/me/premium"
+          className="bg-surface border border-border rounded-2xl p-4 flex items-center gap-3 hover:border-brand transition-colors"
+        >
+          <div className="w-10 h-10 rounded-xl bg-brand/15 text-brand grid place-items-center">
+            <Crown className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted">Премиум</p>
+            <p className="font-semibold">
+              {user.premium
+                ? user.premiumUntil
+                  ? `Активен до ${formatDate(user.premiumUntil)}`
+                  : 'Активен'
+                : 'Не активен'}
+            </p>
+          </div>
+        </Link>
+        <Link
+          to="/me/payout"
+          className="bg-surface border border-border rounded-2xl p-4 flex items-center gap-3 hover:border-brand transition-colors"
+        >
+          <div className="w-10 h-10 rounded-xl bg-elevated text-brand grid place-items-center">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted">Баланс канала</p>
+            <p className="font-semibold">{formatNumber(channel?.balance ?? 0)} ₸</p>
+          </div>
+          <Banknote className="w-4 h-4 text-muted" />
         </Link>
       </div>
 

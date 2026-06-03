@@ -153,5 +153,29 @@ func reseed(ctx context.Context, pool *pgxpool.Pool, defaultUserID string) error
 		}
 	}
 
+	// ---------------- Ads (две демонстрационные рекламы) ----------------
+	type adSeed struct {
+		title, description, videoURL string
+		active                       bool
+	}
+	ads := []adSeed{
+		{"Big Buck Bunny — короткий ролик",
+			"Пример рекламного видео (Blender Foundation).",
+			"https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+			true},
+		{"Elephants Dream — превью",
+			"Ещё один открытый ролик для демонстрации.",
+			"https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+			false},
+	}
+	for _, ad := range ads {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ads(title, description, video_url, active)
+			VALUES ($1, $2, $3, $4)`,
+			ad.title, ad.description, ad.videoURL, ad.active); err != nil {
+			return fmt.Errorf("seed ads: %w", err)
+		}
+	}
+
 	return tx.Commit(ctx)
 }

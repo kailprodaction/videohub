@@ -236,6 +236,15 @@ func (s *Store) RegisterView(ctx context.Context, videoID, userID string) (bool,
 		videoID); err != nil {
 		return false, err
 	}
+	// Демо-монетизация: канал зарабатывает 1 тенге за каждый засчитанный просмотр.
+	if _, err := tx.Exec(ctx, `
+		UPDATE channels SET
+			balance      = balance + 1,
+			total_earned = total_earned + 1
+		WHERE id = (SELECT channel_id FROM videos WHERE id = $1)`,
+		videoID); err != nil {
+		return false, err
+	}
 	return true, tx.Commit(ctx)
 }
 

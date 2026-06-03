@@ -16,6 +16,11 @@ import { AdminUsersPage } from '@/pages/admin/AdminUsersPage'
 import { AdminChannelsPage } from '@/pages/admin/AdminChannelsPage'
 import { AdminVideosPage } from '@/pages/admin/AdminVideosPage'
 import { AdminCommentsPage } from '@/pages/admin/AdminCommentsPage'
+import { AdminAdsPage } from '@/pages/admin/AdminAdsPage'
+import { AdminFinancePage } from '@/pages/admin/AdminFinancePage'
+import { PremiumPage } from '@/pages/me/PremiumPage'
+import { PayoutPage } from '@/pages/me/PayoutPage'
+import { TransactionsPage } from '@/pages/me/TransactionsPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { RegisterPage } from '@/pages/auth/RegisterPage'
 import { RequireAuth } from '@/features/auth/guards'
@@ -75,6 +80,30 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: 'me/premium',
+        element: (
+          <RequireAuth>
+            <PremiumPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'me/payout',
+        element: (
+          <RequireAuth>
+            <PayoutPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'me/transactions',
+        element: (
+          <RequireAuth>
+            <TransactionsPage />
+          </RequireAuth>
+        ),
+      },
 
       // Админ
       {
@@ -90,6 +119,8 @@ export const router = createBrowserRouter([
           { path: 'channels', element: <AdminChannelsPage /> },
           { path: 'videos', element: <AdminVideosPage /> },
           { path: 'comments', element: <AdminCommentsPage /> },
+          { path: 'ads', element: <AdminAdsPage /> },
+          { path: 'finance', element: <AdminFinancePage /> },
         ],
       },
 

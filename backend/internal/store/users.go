@@ -6,10 +6,19 @@ import (
 	"videohub/internal/models"
 )
 
+// userColumns — список колонок users, чтобы запросы и Scan не разъезжались.
+const userColumns = `id, username, display_name, email, avatar_url, bio, role,
+	blocked, created_at, premium, premium_until`
+
+func scanUser(row interface{ Scan(...any) error }, u *models.User) error {
+	return row.Scan(
+		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL,
+		&u.Bio, &u.Role, &u.Blocked, &u.CreatedAt, &u.Premium, &u.PremiumUntil,
+	)
+}
+
 func (s *Store) ListUsers(ctx context.Context) ([]models.User, error) {
-	rows, err := s.Pool.Query(ctx, `
-		SELECT id, username, display_name, email, avatar_url, bio, role, blocked, created_at
-		FROM users ORDER BY created_at`)
+	rows, err := s.Pool.Query(ctx, `SELECT `+userColumns+` FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +27,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]models.User, error) {
 	out := make([]models.User, 0)
 	for rows.Next() {
 		var u models.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt); err != nil {
+		if err := scanUser(rows, &u); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -28,10 +37,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]models.User, error) {
 
 func (s *Store) GetUser(ctx context.Context, id string) (*models.User, error) {
 	var u models.User
-	err := s.Pool.QueryRow(ctx, `
-		SELECT id, username, display_name, email, avatar_url, bio, role, blocked, created_at
-		FROM users WHERE id=$1`, id).
-		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt)
+	err := scanUser(s.Pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id=$1`, id), &u)
 	if isNoRows(err) {
 		return nil, ErrNotFound
 	}

@@ -3,15 +3,17 @@ package models
 import "time"
 
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"displayName"`
-	Email       string    `json:"email"`
-	AvatarURL   string    `json:"avatarUrl"`
-	Bio         string    `json:"bio"`
-	Role        string    `json:"role"`
-	Blocked     bool      `json:"blocked"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID           string     `json:"id"`
+	Username     string     `json:"username"`
+	DisplayName  string     `json:"displayName"`
+	Email        string     `json:"email"`
+	AvatarURL    string     `json:"avatarUrl"`
+	Bio          string     `json:"bio"`
+	Role         string     `json:"role"`
+	Blocked      bool       `json:"blocked"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	Premium      bool       `json:"premium"`
+	PremiumUntil *time.Time `json:"premiumUntil,omitempty"`
 }
 
 type Channel struct {
@@ -24,6 +26,30 @@ type Channel struct {
 	BannerURL        string    `json:"bannerUrl"`
 	SubscribersCount int64     `json:"subscribersCount"`
 	CreatedAt        time.Time `json:"createdAt"`
+	Balance          int64     `json:"balance"`
+	TotalEarned      int64     `json:"totalEarned"`
+}
+
+type Ad struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	VideoURL    string    `json:"videoUrl"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type Transaction struct {
+	ID          string    `json:"id"`
+	UserID      *string   `json:"userId,omitempty"`
+	ChannelID   *string   `json:"channelId,omitempty"`
+	Type        string    `json:"type"`
+	Amount      int64     `json:"amount"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
+	CardLast4   *string   `json:"cardLast4,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type Video struct {

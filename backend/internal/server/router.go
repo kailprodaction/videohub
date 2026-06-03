@@ -42,10 +42,11 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 		w.Write([]byte("ok"))
 	})
 
-	// Статика: /uploads/MP4/*, /uploads/PNG/*
+	// Статика: /uploads/MP4/*, /uploads/PNG/*, /uploads/ADS/*
 	staticAbs, _ := filepath.Abs(cfg.UploadsDir)
 	_ = os.MkdirAll(filepath.Join(staticAbs, "MP4"), 0o755)
 	_ = os.MkdirAll(filepath.Join(staticAbs, "PNG"), 0o755)
+	_ = os.MkdirAll(filepath.Join(staticAbs, "ADS"), 0o755)
 	fs := http.StripPrefix("/uploads/", http.FileServer(http.Dir(staticAbs)))
 	r.Handle("/uploads/*", fs)
 
@@ -72,6 +73,9 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 		r.Get("/users", h.ListUsers)
 		r.Get("/users/{id}", h.GetUser)
 
+		// Реклама — публично читаем активную.
+		r.Get("/ads/active", h.ActiveAd)
+
 		// ---------- Требуют авторизации ----------
 		r.Group(func(r chi.Router) {
 			r.Use(authpkg.RequireAuth)
@@ -95,6 +99,12 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 
 			r.Post("/upload/video", h.UploadVideo)
 			r.Post("/upload/image", h.UploadImage)
+
+			// Монетизация
+			r.Post("/premium/buy", h.BuyPremium)
+			r.Get("/transactions/me", h.MyTransactions)
+			r.Get("/channels/me", h.MyChannel)
+			r.Post("/channels/me/payout", h.PayoutMyChannel)
 		})
 
 		// ---------- Только админ ----------
@@ -106,6 +116,19 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 			r.Post("/admin/users/{id}/block", h.AdminBlockUser)
 			r.Post("/admin/channels/{id}/stats", h.AdminAdjustStats)
 			r.Post("/admin/videos/{id}/stats", h.AdminAdjustVideoStats)
+
+			// Реклама — управление
+			r.Get("/admin/ads", h.AdminListAds)
+			r.Post("/admin/ads", h.AdminCreateAd)
+			r.Patch("/admin/ads/{id}", h.AdminUpdateAd)
+			r.Delete("/admin/ads/{id}", h.AdminDeleteAd)
+			r.Post("/upload/ad", h.UploadAd)
+
+			// Финансы
+			r.Get("/admin/transactions", h.AdminListTransactions)
+			r.Get("/admin/users/premium", h.AdminListPremium)
+			r.Patch("/admin/users/{id}/premium", h.AdminSetPremium)
+			r.Patch("/admin/channels/{id}/balance", h.AdminAdjustBalance)
 		})
 	})
 

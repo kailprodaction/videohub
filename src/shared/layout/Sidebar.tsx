@@ -1,5 +1,16 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Users, ListVideo, BarChart3, Upload, ShieldCheck, User } from 'lucide-react'
+import {
+  Home,
+  Users,
+  ListVideo,
+  BarChart3,
+  Upload,
+  ShieldCheck,
+  User,
+  Crown,
+  Banknote,
+  Receipt,
+} from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/shared/lib/cn'
 
@@ -15,6 +26,9 @@ const userItems = [
   { to: '/me/videos', label: 'Мой канал', icon: ListVideo },
   { to: '/me/upload', label: 'Загрузить', icon: Upload },
   { to: '/me/stats', label: 'Статистика', icon: BarChart3 },
+  { to: '/me/premium', label: 'Премиум', icon: Crown },
+  { to: '/me/payout', label: 'Вывод средств', icon: Banknote },
+  { to: '/me/transactions', label: 'Транзакции', icon: Receipt },
 ]
 
 const adminItems = [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck, end: true }]

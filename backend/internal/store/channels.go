@@ -17,10 +17,21 @@ SELECT
 	c.avatar_url,
 	c.banner_url,
 	GREATEST(c.subscribers_count + COALESCE(o.subscribers, 0), 0) AS subscribers_count,
-	c.created_at
+	c.created_at,
+	c.balance,
+	c.total_earned
 FROM channels c
 LEFT JOIN channel_overrides o ON o.channel_id = c.id
 `
+
+// scanChannel — общий scan для строки канала; держит список полей в одном месте.
+func scanChannel(row interface{ Scan(...any) error }, c *models.Channel) error {
+	return row.Scan(
+		&c.ID, &c.OwnerID, &c.Name, &c.Handle, &c.Description,
+		&c.AvatarURL, &c.BannerURL, &c.SubscribersCount, &c.CreatedAt,
+		&c.Balance, &c.TotalEarned,
+	)
+}
 
 func (s *Store) ListChannels(ctx context.Context) ([]models.Channel, error) {
 	rows, err := s.Pool.Query(ctx, channelSelect+" ORDER BY c.created_at")
@@ -32,7 +43,7 @@ func (s *Store) ListChannels(ctx context.Context) ([]models.Channel, error) {
 	out := make([]models.Channel, 0)
 	for rows.Next() {
 		var c models.Channel
-		if err := rows.Scan(&c.ID, &c.OwnerID, &c.Name, &c.Handle, &c.Description, &c.AvatarURL, &c.BannerURL, &c.SubscribersCount, &c.CreatedAt); err != nil {
+		if err := scanChannel(rows, &c); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -42,8 +53,7 @@ func (s *Store) ListChannels(ctx context.Context) ([]models.Channel, error) {
 
 func (s *Store) GetChannel(ctx context.Context, id string) (*models.Channel, error) {
 	var c models.Channel
-	err := s.Pool.QueryRow(ctx, channelSelect+" WHERE c.id=$1", id).
-		Scan(&c.ID, &c.OwnerID, &c.Name, &c.Handle, &c.Description, &c.AvatarURL, &c.BannerURL, &c.SubscribersCount, &c.CreatedAt)
+	err := scanChannel(s.Pool.QueryRow(ctx, channelSelect+" WHERE c.id=$1", id), &c)
 	if isNoRows(err) {
 		return nil, ErrNotFound
 	}
@@ -52,8 +62,7 @@ func (s *Store) GetChannel(ctx context.Context, id string) (*models.Channel, err
 
 func (s *Store) GetChannelByOwner(ctx context.Context, ownerID string) (*models.Channel, error) {
 	var c models.Channel
-	err := s.Pool.QueryRow(ctx, channelSelect+" WHERE c.owner_id=$1", ownerID).
-		Scan(&c.ID, &c.OwnerID, &c.Name, &c.Handle, &c.Description, &c.AvatarURL, &c.BannerURL, &c.SubscribersCount, &c.CreatedAt)
+	err := scanChannel(s.Pool.QueryRow(ctx, channelSelect+" WHERE c.owner_id=$1", ownerID), &c)
 	if isNoRows(err) {
 		return nil, ErrNotFound
 	}

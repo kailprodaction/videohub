@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Navbar } from './Navbar'
 import { Sidebar } from './Sidebar'
 import { AuthPromptDialog } from '@/features/auth/AuthPrompt'
+import { ToastContainer } from '@/shared/ui/toast'
 
 export function RootLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -16,6 +17,7 @@ export function RootLayout() {
         </main>
       </div>
       <AuthPromptDialog />
+      <ToastContainer />
     </div>
   )
 }

@@ -9,18 +9,24 @@ import {
   Maximize,
   Minimize,
   Settings as SettingsIcon,
+  SkipForward,
 } from 'lucide-react'
-import type { Video, Quality } from '@/shared/types'
+import type { Video, Quality, Ad } from '@/shared/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { formatDuration } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/cn'
 
 interface VideoPlayerProps {
   video: Video
+  preRollAd?: Ad | null
   onFirstPlay?: () => void
+  onAdFinish?: () => void
 }
 
-export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
+const AD_MAX_SECONDS = 30
+const AD_SKIPPABLE_AFTER = 5
+
+export function VideoPlayer({ video, preRollAd, onFirstPlay, onAdFinish }: VideoPlayerProps) {
   const playerRef = useRef<ReactPlayer | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement | null>(null)
@@ -35,6 +41,9 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
   const quality = usePlayerStore((s) => s.quality)
   const setQuality = usePlayerStore((s) => s.setQuality)
 
+  const [phase, setPhase] = useState<'ad' | 'main'>(preRollAd ? 'ad' : 'main')
+  const [adSeconds, setAdSeconds] = useState(0)
+
   const [playing, setPlaying] = useState(false)
   const [played, setPlayed] = useState(0)
   const [seeking, setSeeking] = useState(false)
@@ -46,10 +55,13 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
 
   const availableQualities = video.sources.map((s) => s.quality)
   const hasMultiQualities = availableQualities.length > 1
-  const currentSrc =
-    video.sources.find((s) => s.quality === quality)?.url ?? video.sources[0]?.url
+  const mainSrc = video.sources.find((s) => s.quality === quality)?.url ?? video.sources[0]?.url
+  const currentSrc = phase === 'ad' ? preRollAd!.videoUrl : mainSrc
 
-  // Fullscreen API
+  const isAd = phase === 'ad'
+  const canSkipAd = isAd && adSeconds >= AD_SKIPPABLE_AFTER
+  const skipInLabel = Math.max(0, Math.ceil(AD_SKIPPABLE_AFTER - adSeconds))
+
   useEffect(() => {
     function onChange() {
       setIsFullscreen(!!document.fullscreenElement)
@@ -60,11 +72,8 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
 
   async function toggleFullscreen() {
     try {
-      if (!document.fullscreenElement) {
-        await wrapRef.current?.requestFullscreen()
-      } else {
-        await document.exitFullscreen()
-      }
+      if (!document.fullscreenElement) await wrapRef.current?.requestFullscreen()
+      else await document.exitFullscreen()
     } catch (e) {
       console.warn('fullscreen toggle failed', e)
     }
@@ -89,12 +98,11 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
   }, [playing, showSettings])
 
   function handleQualityChange(q: Quality) {
+    if (isAd) return
     const current = playerRef.current?.getCurrentTime() ?? 0
     setQuality(q)
     setShowSettings(false)
-    requestAnimationFrame(() => {
-      if (playerRef.current) playerRef.current.seekTo(current, 'seconds')
-    })
+    requestAnimationFrame(() => playerRef.current?.seekTo(current, 'seconds'))
   }
 
   function getFractionFromEvent(e: MouseEvent | React.MouseEvent) {
@@ -105,10 +113,10 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
   }
 
   function handleProgressMouseDown(e: React.MouseEvent) {
+    if (isAd) return
     setSeeking(true)
     const fraction = getFractionFromEvent(e)
     setPlayed(fraction)
-
     function onMove(ev: MouseEvent) {
       setPlayed(getFractionFromEvent(ev))
     }
@@ -125,17 +133,27 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
 
   function togglePlay() {
     setPlaying((p) => !p)
-    // Любое нажатие Play — это user gesture: гарантированно снимаем mute и
-    // поднимаем громкость, если она оказалась нулевой. Браузер разрешит звук.
     if (muted) setMuted(false)
     if (volume === 0) setVolume(0.5)
+    if (!firstPlayed) {
+      setFirstPlayed(true)
+      if (!isAd) onFirstPlay?.()
+    }
+  }
+
+  function finishAd() {
+    setPhase('main')
+    setAdSeconds(0)
+    setPlayed(0)
+    setDuration(0)
+    setPlaying(true)
+    onAdFinish?.()
     if (!firstPlayed) {
       setFirstPlayed(true)
       onFirstPlay?.()
     }
   }
 
-  // Клик по иконке звука: переключает mute. Если громкость была 0 — поднимает её до 0.5.
   function toggleMute() {
     if (muted || volume === 0) {
       setMuted(false)
@@ -153,21 +171,18 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
       ref={wrapRef}
       className={cn(
         'video-wrap relative w-full bg-black group select-none',
-        // В полноэкранном режиме не нужна 16:9 — занимаем весь экран.
         isFullscreen ? 'h-screen' : 'aspect-video',
       )}
       onMouseMove={resetHideTimer}
       onMouseLeave={() => playing && !showSettings && setShowControls(false)}
     >
       <ReactPlayer
+        key={isAd ? 'ad' : 'main'}
         ref={playerRef}
         url={currentSrc}
         playing={playing}
-        // Управляем звуком ТОЛЬКО через volume — это надёжнее, чем комбинировать
-        // muted + volume (некоторые сборки react-player при muted=true игнорируют
-        // последующее снятие mute и звук остаётся выключенным).
         volume={muted ? 0 : volume}
-        playbackRate={playbackRate}
+        playbackRate={isAd ? 1 : playbackRate}
         width="100%"
         height="100%"
         progressInterval={250}
@@ -175,12 +190,19 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
         onPause={() => setPlaying(false)}
         onProgress={(p) => {
           if (!seeking) setPlayed(p.played)
+          if (isAd) {
+            const s = p.playedSeconds
+            setAdSeconds(s)
+            if (s >= AD_MAX_SECONDS) finishAd()
+          }
         }}
         onDuration={(d) => setDuration(d)}
+        onEnded={() => {
+          if (isAd) finishAd()
+        }}
         config={{ file: { attributes: { controlsList: 'nodownload', playsInline: true } } }}
       />
 
-      {/* Кнопка play поверх паузы */}
       {!playing && (
         <button
           onClick={togglePlay}
@@ -193,7 +215,29 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
         </button>
       )}
 
-      {/* Контролы */}
+      {isAd && (
+        <>
+          <div className="absolute top-3 left-3 bg-brand/95 text-white text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-md max-w-[60%] truncate">
+            Реклама · {preRollAd?.title ?? ''}
+          </div>
+          <div className="absolute top-3 right-3 flex items-center gap-2">
+            {canSkipAd ? (
+              <button
+                onClick={finishAd}
+                className="inline-flex items-center gap-2 bg-black/85 hover:bg-black text-white text-sm px-4 py-2 rounded-md border border-white/20"
+              >
+                Пропустить рекламу
+                <SkipForward className="w-4 h-4" />
+              </button>
+            ) : (
+              <div className="bg-black/75 text-white/90 text-xs px-3 py-1.5 rounded-md">
+                Пропустить можно через {skipInLabel}&nbsp;сек
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <div
         className={cn(
           'absolute bottom-0 inset-x-0 px-3 pb-2 pt-8 transition-opacity duration-200',
@@ -203,17 +247,21 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
       >
         <div
           ref={progressBarRef}
-          className="h-1 bg-white/30 rounded cursor-pointer group/progress hover:h-1.5 transition-all relative"
+          className={cn(
+            'h-1 rounded relative transition-all',
+            isAd
+              ? 'bg-brand/30 cursor-not-allowed'
+              : 'bg-white/30 cursor-pointer group/progress hover:h-1.5',
+          )}
           onMouseDown={handleProgressMouseDown}
         >
-          <div
-            className="absolute inset-y-0 left-0 bg-brand rounded"
-            style={{ width: `${played * 100}%` }}
-          />
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-brand opacity-0 group-hover/progress:opacity-100 transition-opacity"
-            style={{ left: `calc(${played * 100}% - 6px)` }}
-          />
+          <div className="absolute inset-y-0 left-0 bg-brand rounded" style={{ width: `${played * 100}%` }} />
+          {!isAd && (
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-brand opacity-0 group-hover/progress:opacity-100 transition-opacity"
+              style={{ left: `calc(${played * 100}% - 6px)` }}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-3 mt-2 text-white">
@@ -221,7 +269,6 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
             {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
           </button>
 
-          {/* Громкость — слайдер видимый, всегда. */}
           <div className="flex items-center gap-2">
             <button onClick={toggleMute} className="p-1 hover:scale-110 transition-transform" aria-label="Громкость">
               <VolumeIcon className="w-5 h-5" />
@@ -247,15 +294,22 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
             {formatDuration(currentTime)} / {formatDuration(duration)}
           </span>
 
-          <div className="ml-auto flex items-center gap-1 relative">
-            <button
-              onClick={() => setShowSettings((v) => !v)}
-              className="p-1 hover:scale-110 transition-transform"
-              aria-label="Настройки"
-            >
-              <SettingsIcon className="w-5 h-5" />
-            </button>
+          {isAd && (
+            <span className="text-xs uppercase tracking-wide bg-white/15 px-2 py-0.5 rounded">
+              Идёт реклама
+            </span>
+          )}
 
+          <div className="ml-auto flex items-center gap-1 relative">
+            {!isAd && (
+              <button
+                onClick={() => setShowSettings((v) => !v)}
+                className="p-1 hover:scale-110 transition-transform"
+                aria-label="Настройки"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={toggleFullscreen}
               className="p-1 hover:scale-110 transition-transform"
@@ -264,7 +318,7 @@ export function VideoPlayer({ video, onFirstPlay }: VideoPlayerProps) {
               {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
             </button>
 
-            {showSettings && (
+            {showSettings && !isAd && (
               <SettingsPanel
                 playbackRate={playbackRate}
                 onPlaybackRate={setPlaybackRate}
@@ -310,7 +364,6 @@ function SettingsPanel({
           ✕
         </button>
       </div>
-
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm">Скорость</span>
@@ -345,7 +398,6 @@ function SettingsPanel({
           ))}
         </div>
       </div>
-
       <div>
         <div className="text-sm mb-2">Качество</div>
         {multiQuality ? (

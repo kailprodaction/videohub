@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
 import { getRecommended, getVideoById, getUserReaction, setReaction, incrementViews } from '@/api/videos'
 import { getChannelById } from '@/api/channels'
+import { fetchActiveAd } from '@/api/ads'
+import { useAuthStore } from '@/stores/authStore'
 import { VideoPlayer } from '@/features/video/player/VideoPlayer'
 import { VideoCard } from '@/features/video/VideoCard'
 import { SubscribeButton } from '@/features/channel/SubscribeButton'
@@ -21,6 +23,15 @@ export function WatchPage() {
   const { videoId = '' } = useParams()
   const qc = useQueryClient()
   const isAuthed = useIsAuthenticated()
+
+  const isPremium = useAuthStore((s) => s.user?.premium ?? false)
+  const { data: ad } = useQuery({
+    queryKey: ['ad', 'active'],
+    queryFn: fetchActiveAd,
+    // Премиум-пользователи рекламу не получают вовсе.
+    enabled: !isPremium,
+    staleTime: 60_000,
+  })
 
   const { data: video, isLoading, isError, refetch } = useQuery({
     queryKey: ['video', videoId],
@@ -71,6 +82,7 @@ export function WatchPage() {
         <div className="rounded-xl overflow-hidden bg-black">
           <VideoPlayer
             video={video}
+            preRollAd={isPremium ? null : ad}
             onFirstPlay={() => {
               // Анонимные просмотры не считаем — backend и так их игнорирует,
               // но фронт лишний раз не дёргает API.

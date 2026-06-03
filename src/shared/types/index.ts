@@ -22,6 +22,8 @@ export interface User {
   role: 'user' | 'admin'
   createdAt: string
   blocked?: boolean
+  premium?: boolean
+  premiumUntil?: string | null
 }
 
 export interface VideoSource {
@@ -38,6 +40,37 @@ export interface Channel {
   avatarUrl: string
   bannerUrl: string
   subscribersCount: number
+  createdAt: string
+  balance?: number
+  totalEarned?: number
+}
+
+export interface Ad {
+  id: string
+  title: string
+  description: string
+  videoUrl: string
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type TransactionType =
+  | 'PREMIUM_PURCHASE'
+  | 'CHANNEL_PAYOUT'
+  | 'ADMIN_ADJUSTMENT'
+
+export type TransactionStatus = 'SUCCESS' | 'FAILED' | 'PENDING'
+
+export interface Transaction {
+  id: string
+  userId?: string | null
+  channelId?: string | null
+  type: TransactionType
+  amount: number
+  status: TransactionStatus
+  description: string
+  cardLast4?: string | null
   createdAt: string
 }
 

@@ -85,10 +85,8 @@ func (s *Store) ConsumeAuthCode(ctx context.Context, email, code, kind string) (
 // GetUserByEmail возвращает пользователя по email или ErrNotFound.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var u models.User
-	err := s.Pool.QueryRow(ctx, `
-		SELECT id, username, display_name, email, avatar_url, bio, role, blocked, created_at
-		FROM users WHERE email = $1`, email).
-		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt)
+	err := scanUser(s.Pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE email = $1`, email), &u)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -100,10 +98,10 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User,
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (*models.User, string, error) {
 	var u models.User
 	var hash *string
-	err := s.Pool.QueryRow(ctx, `
-		SELECT id, username, display_name, email, avatar_url, bio, role, blocked, created_at, password_hash
-		FROM users WHERE username = $1`, username).
-		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt, &hash)
+	err := s.Pool.QueryRow(ctx,
+		`SELECT `+userColumns+`, password_hash FROM users WHERE username = $1`, username).
+		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL,
+			&u.Bio, &u.Role, &u.Blocked, &u.CreatedAt, &u.Premium, &u.PremiumUntil, &hash)
 	if err == pgx.ErrNoRows {
 		return nil, "", ErrNotFound
 	}
@@ -145,12 +143,11 @@ func (s *Store) CreateUserWithChannel(ctx context.Context, in CreateUserParams) 
 	// avatar_url / banner_url оставляем пустыми: пользователь сам загрузит аватарку
 	// через личный кабинет. На фронте Avatar-компонент рисует заглушку.
 	var u models.User
-	if err := tx.QueryRow(ctx, `
+	if err := scanUser(tx.QueryRow(ctx, `
 		INSERT INTO users (username, display_name, email, avatar_url, bio, role, password_hash)
 		VALUES ($1, $2, $3, '', '', 'user', NULLIF($4, ''))
-		RETURNING id, username, display_name, email, avatar_url, bio, role, blocked, created_at`,
-		in.Login, in.DisplayName, in.Email, in.PasswordHash).
-		Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Bio, &u.Role, &u.Blocked, &u.CreatedAt); err != nil {
+		RETURNING `+userColumns,
+		in.Login, in.DisplayName, in.Email, in.PasswordHash), &u); err != nil {
 		return nil, err
 	}
 

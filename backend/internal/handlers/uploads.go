@@ -28,6 +28,17 @@ func (h *Handlers) UploadVideo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"url": url})
 }
 
+// POST /api/upload/ad (multipart/form-data, поле "file") — рекламные ролики.
+// Тот же формат и лимит, что у обычных видео, но кладутся в uploads/ADS.
+func (h *Handlers) UploadAd(w http.ResponseWriter, r *http.Request) {
+	url, err := h.saveUpload(r, "ADS", h.Cfg.MaxVideoBytes, allowedVideoExt)
+	if err != nil {
+		writeUploadErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"url": url})
+}
+
 // POST /api/upload/image  (multipart/form-data, поле "file")
 func (h *Handlers) UploadImage(w http.ResponseWriter, r *http.Request) {
 	url, err := h.saveUpload(r, "PNG", h.Cfg.MaxImageBytes, allowedImageExt)
