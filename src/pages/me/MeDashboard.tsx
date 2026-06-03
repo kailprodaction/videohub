@@ -77,16 +77,20 @@ export function MeDashboard() {
 
   if (!user) return <Loader />
 
+  const isAdmin = user.role === 'admin'
+
   return (
     <div className="px-4 lg:px-8 py-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Личный кабинет</h1>
+        {!isAdmin && (
         <Link to="/me/upload">
           <Button>
             <UploadIcon className="w-4 h-4" />
             Загрузить видео
           </Button>
         </Link>
+        )}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 mb-4">

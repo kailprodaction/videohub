@@ -3,6 +3,9 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/url"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -50,6 +53,10 @@ func (h *Handlers) AdminCreateAd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation", "title and videoUrl are required")
 		return
 	}
+	if !h.isUploadedAdURL(r, req.VideoURL) {
+		writeError(w, http.StatusBadRequest, "validation", "ad video must be uploaded as a file")
+		return
+	}
 	active := true
 	if req.Active != nil {
 		active = *req.Active
@@ -79,6 +86,10 @@ func (h *Handlers) AdminUpdateAd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
 	}
+	if req.VideoURL != nil && !h.isUploadedAdURL(r, *req.VideoURL) {
+		writeError(w, http.StatusBadRequest, "validation", "ad video must be uploaded as a file")
+		return
+	}
 	if err := h.Store.UpdateAd(r.Context(), id, store.UpdateAdParams{
 		Title: req.Title, Description: req.Description,
 		VideoURL: req.VideoURL, Active: req.Active,
@@ -86,6 +97,46 @@ func (h *Handlers) AdminUpdateAd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) isUploadedAdURL(r *http.Request, raw string) bool {
+	uploadPath, ok := extractAdUploadPath(raw)
+	if !ok {
+		return false
+	}
+	if _, err := h.Store.GetUploadFile(r.Context(), uploadPath); err != nil {
+		return false
+	}
+	return true
+}
+
+func extractAdUploadPath(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+
+	path := raw
+	if parsed, err := url.Parse(raw); err == nil && parsed.Path != "" {
+		path = parsed.Path
+	}
+
+	const prefix = "/uploads/ADS/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".mp4" && ext != ".webm" {
+		return "", false
+	}
+
+	name := strings.TrimPrefix(path, prefix)
+	if name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+
+	return "ADS/" + name, true
 }
 
 // DELETE /api/admin/ads/{id}

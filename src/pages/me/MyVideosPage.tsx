@@ -27,13 +27,17 @@ export function MyVideosPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['videos'] }),
   })
 
+  const isAdmin = user?.role === 'admin'
+
   return (
     <div className="px-4 lg:px-8 py-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Мой канал</h1>
+        {!isAdmin && (
         <Link to="/me/upload">
           <Button>Загрузить новое</Button>
         </Link>
+        )}
       </div>
 
       {isLoading && <Loader />}

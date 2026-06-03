@@ -127,7 +127,12 @@ function AdEditor({ ad, onClose }: { ad: Ad | null; onClose: () => void }) {
   const save = useMutation({
     mutationFn: async () => {
       if (ad) {
-        await adminUpdateAd(ad.id, { title, description, videoUrl, active })
+        await adminUpdateAd(ad.id, {
+          title,
+          description,
+          active,
+          ...(videoUrl !== ad.videoUrl ? { videoUrl } : {}),
+        })
       } else {
         await adminCreateAd({ title, description, videoUrl, active })
       }
@@ -173,7 +178,13 @@ function AdEditor({ ad, onClose }: { ad: Ad | null; onClose: () => void }) {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">URL видео</label>
-            <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://..." />
+            {videoUrl ? (
+              <a href={videoUrl} target="_blank" rel="noreferrer" className="block text-xs text-muted truncate hover:text-brand">
+                {videoUrl}
+              </a>
+            ) : (
+              <p className="text-xs text-muted">Загрузите файл mp4 или webm.</p>
+            )}
             <label className="mt-2 inline-flex items-center gap-2 text-sm cursor-pointer text-brand hover:underline">
               <UploadIcon className="w-4 h-4" />
               {uploading ? 'Загрузка…' : 'Загрузить файл (mp4/webm)'}

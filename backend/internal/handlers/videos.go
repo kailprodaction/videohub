@@ -65,6 +65,11 @@ type createVideoReq struct {
 
 // POST /api/videos — создаёт видео (ссылки на файлы предполагаются уже загруженными).
 func (h *Handlers) CreateVideo(w http.ResponseWriter, r *http.Request) {
+	if authpkg.Role(r) == "admin" {
+		writeError(w, http.StatusForbidden, "forbidden", "admins can create ads only, not channel videos")
+		return
+	}
+
 	var req createVideoReq
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", "invalid json: "+err.Error())

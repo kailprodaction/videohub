@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	authpkg "videohub/internal/auth"
 	"videohub/internal/store"
 )
 
@@ -21,6 +22,11 @@ var (
 )
 
 func (h *Handlers) UploadVideo(w http.ResponseWriter, r *http.Request) {
+	if authpkg.Role(r) == "admin" {
+		writeError(w, http.StatusForbidden, "forbidden", "admins can upload ad files only")
+		return
+	}
+
 	url, err := h.saveUpload(r, "MP4", h.Cfg.MaxVideoBytes, allowedVideoExt)
 	if err != nil {
 		writeUploadErr(w, err)

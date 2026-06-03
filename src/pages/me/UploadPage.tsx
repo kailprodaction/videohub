@@ -116,6 +116,20 @@ export function UploadPage() {
     reader.readAsDataURL(f)
   }
 
+  if (user?.role === 'admin') {
+    return (
+      <div className="px-4 lg:px-8 py-6 max-w-3xl mx-auto">
+        <div className="bg-surface border border-border rounded-2xl p-6">
+          <h1 className="text-2xl font-bold mb-2">Загрузка видео недоступна</h1>
+          <p className="text-sm text-muted mb-4">
+            Администратор может добавлять только рекламные ролики через админ-панель.
+          </p>
+          <Button onClick={() => navigate('/admin/ads')}>Перейти к рекламе</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 lg:px-8 py-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Загрузка видео</h1>
