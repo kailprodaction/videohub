@@ -18,9 +18,9 @@ SELECT
 	v.thumbnail_url,
 	v.video_url,
 	v.duration_sec,
-	v.views_count    + COALESCE(o.views, 0)    AS views,
-	v.likes_count    + COALESCE(o.likes, 0)    AS likes,
-	v.dislikes_count + COALESCE(o.dislikes, 0) AS dislikes,
+	GREATEST(v.views_count    + COALESCE(o.views, 0), 0)    AS views,
+	GREATEST(v.likes_count    + COALESCE(o.likes, 0), 0)    AS likes,
+	GREATEST(v.dislikes_count + COALESCE(o.dislikes, 0), 0) AS dislikes,
 	v.category,
 	v.visibility,
 	v.tags,
@@ -33,13 +33,13 @@ LEFT JOIN channel_overrides o ON o.channel_id = v.channel_id
 `
 
 type ListVideosParams struct {
-	Query        string
-	ChannelID    string
-	Limit        int
-	OnlyPublic   bool
-	ExcludeID    string
-	Category     string
-	OrderBy      string // "rating", "fresh"; пусто = uploaded_at DESC
+	Query      string
+	ChannelID  string
+	Limit      int
+	OnlyPublic bool
+	ExcludeID  string
+	Category   string
+	OrderBy    string // "rating", "fresh"; пусто = uploaded_at DESC
 }
 
 func (s *Store) ListVideos(ctx context.Context, p ListVideosParams) ([]models.Video, error) {
@@ -77,9 +77,9 @@ func (s *Store) ListVideos(ctx context.Context, p ListVideosParams) ([]models.Vi
 		// Формула из ТЗ + бонус свежести (см. recommend.go); тут только базовый порядок.
 		sql += `
 		ORDER BY
-			(v.views_count + COALESCE(o.views,0)) * 1
-			+ (v.likes_count + COALESCE(o.likes,0)) * 5
-			- (v.dislikes_count + COALESCE(o.dislikes,0)) * 3
+			GREATEST(v.views_count + COALESCE(o.views,0), 0) * 1
+			+ GREATEST(v.likes_count + COALESCE(o.likes,0), 0) * 5
+			- GREATEST(v.dislikes_count + COALESCE(o.dislikes,0), 0) * 3
 			+ GREATEST(0, 14 - EXTRACT(DAY FROM (NOW() - v.uploaded_at))) * 50
 			DESC, v.uploaded_at DESC`
 	default:
@@ -160,20 +160,34 @@ func (s *Store) AdminAdjustVideoStats(ctx context.Context, videoID string, views
 		return err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE videos SET
-			views_count    = GREATEST(views_count    + $2, 0),
-			likes_count    = GREATEST(likes_count    + $3, 0),
-			dislikes_count = GREATEST(dislikes_count + $4, 0)
-		WHERE id = $1`,
-		videoID, views, likes, dislikes); err != nil {
+	var appliedViews, appliedLikes, appliedDislikes int64
+	if err := tx.QueryRow(ctx, `
+		WITH current AS (
+			SELECT views_count, likes_count, dislikes_count
+			FROM videos
+			WHERE id = $1
+		),
+		updated AS (
+			UPDATE videos SET
+				views_count    = GREATEST(views_count    + $2, 0),
+				likes_count    = GREATEST(likes_count    + $3, 0),
+				dislikes_count = GREATEST(dislikes_count + $4, 0)
+			WHERE id = $1
+			RETURNING views_count, likes_count, dislikes_count
+		)
+		SELECT
+			u.views_count - c.views_count,
+			u.likes_count - c.likes_count,
+			u.dislikes_count - c.dislikes_count
+		FROM updated u, current c`,
+		videoID, views, likes, dislikes).Scan(&appliedViews, &appliedLikes, &appliedDislikes); err != nil {
 		return err
 	}
 
 	for _, ev := range []struct {
 		kind  string
 		delta int64
-	}{{"views", views}, {"likes", likes}, {"dislikes", dislikes}} {
+	}{{"views", appliedViews}, {"likes", appliedLikes}, {"dislikes", appliedDislikes}} {
 		if ev.delta == 0 {
 			continue
 		}

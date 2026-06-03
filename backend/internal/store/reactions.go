@@ -85,7 +85,10 @@ func (s *Store) SetReaction(ctx context.Context, videoID, userID, reaction strin
 
 	if dLikes != 0 || dDislikes != 0 {
 		if _, err := tx.Exec(ctx,
-			`UPDATE videos SET likes_count = likes_count + $2, dislikes_count = dislikes_count + $3 WHERE id=$1`,
+			`UPDATE videos SET
+				likes_count = GREATEST(likes_count + $2, 0),
+				dislikes_count = GREATEST(dislikes_count + $3, 0)
+			WHERE id=$1`,
 			videoID, dLikes, dDislikes); err != nil {
 			return "", err
 		}

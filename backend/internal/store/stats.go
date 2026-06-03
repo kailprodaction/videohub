@@ -22,7 +22,7 @@ func (s *Store) ChannelStats(ctx context.Context, channelID string) (*models.Cha
 	dateIndex := make(map[string]int, statsDays)
 	points := make([]models.StatsPoint, statsDays)
 	for i := 0; i < statsDays; i++ {
-		d := today.AddDate(0, 0, -(statsDays-1-i))
+		d := today.AddDate(0, 0, -(statsDays - 1 - i))
 		key := d.Format("2006-01-02")
 		points[i].Date = key
 		dateIndex[key] = i
@@ -129,6 +129,10 @@ func (s *Store) ChannelStats(ctx context.Context, channelID string) (*models.Cha
 			points[i].Likes += dL
 			points[i].Dislikes += dD
 			points[i].Subscribers += dS
+			points[i].Views = maxInt64(points[i].Views, 0)
+			points[i].Likes = maxInt64(points[i].Likes, 0)
+			points[i].Dislikes = maxInt64(points[i].Dislikes, 0)
+			points[i].Subscribers = maxInt64(points[i].Subscribers, 0)
 		}
 	}
 
@@ -156,10 +160,13 @@ func (s *Store) ChannelStats(ctx context.Context, channelID string) (*models.Cha
 	totViews += override.Views
 	totLikes += override.Likes
 	totDislikes += override.Dislikes
+	totViews = maxInt64(totViews, 0)
+	totLikes = maxInt64(totLikes, 0)
+	totDislikes = maxInt64(totDislikes, 0)
 
 	var totSubs int64
 	if err := s.Pool.QueryRow(ctx,
-		`SELECT subscribers_count + COALESCE((SELECT subscribers FROM channel_overrides WHERE channel_id=$1), 0)
+		`SELECT GREATEST(subscribers_count + COALESCE((SELECT subscribers FROM channel_overrides WHERE channel_id=$1), 0), 0)
 		 FROM channels WHERE id=$1`, channelID).Scan(&totSubs); err != nil {
 		return nil, err
 	}
@@ -204,8 +211,8 @@ func (s *Store) PlatformStats(ctx context.Context) (*models.PlatformStats, error
 			(SELECT COUNT(*) FROM users),
 			(SELECT COUNT(*) FROM channels),
 			(SELECT COUNT(*) FROM videos),
-			(SELECT COALESCE(SUM(views_count), 0) FROM videos)
-			  + COALESCE((SELECT SUM(views) FROM channel_overrides), 0),
+			GREATEST((SELECT COALESCE(SUM(views_count), 0) FROM videos)
+			  + COALESCE((SELECT SUM(views) FROM channel_overrides), 0), 0),
 			(SELECT COUNT(*) FROM comments)
 		`).Scan(&ps.TotalUsers, &ps.TotalChannels, &ps.TotalVideos, &ps.TotalViews, &ps.TotalComments); err != nil {
 		return nil, err
@@ -237,4 +244,11 @@ func (s *Store) PlatformStats(ctx context.Context) (*models.PlatformStats, error
 		ps.DailyActive = append(ps.DailyActive, models.DailyActivityPoint{Date: d, Count: counts[d]})
 	}
 	return &ps, nil
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
