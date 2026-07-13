@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { VideoPlayer } from '@/features/video/player/VideoPlayer'
 import { VideoCard } from '@/features/video/VideoCard'
 import { SubscribeButton } from '@/features/channel/SubscribeButton'
+import { ReportButton } from '@/features/report/ReportButton'
 import { CommentForm } from '@/features/comment/CommentForm'
 import { CommentList } from '@/features/comment/CommentList'
 import { Avatar } from '@/shared/ui/Avatar'
@@ -106,8 +107,10 @@ export function WatchPage() {
 
           {channel && <SubscribeButton channelId={channel.id} />}
 
-          <div className="flex items-center gap-1 ml-auto bg-elevated rounded-full overflow-hidden">
+          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-1 bg-elevated rounded-full overflow-hidden">
             <button
+              type="button"
               onClick={() => toggleReaction('like')}
               className={cn(
                 'flex items-center gap-2 px-4 h-10 hover:bg-border',
@@ -128,6 +131,8 @@ export function WatchPage() {
               <ThumbsDown className="w-5 h-5" />
               <span className="text-sm">{formatNumber(video.dislikes)}</span>
             </button>
+          </div>
+          <ReportButton targetType="video" targetId={videoId} />
           </div>
         </div>
 

@@ -103,7 +103,21 @@ export function UploadPage() {
         tags: parseTags(data.tags),
       })
     },
-    onSuccess: () => navigate('/me/videos'),
+    onSuccess: (res) => {
+      // ML-модерация могла задержать/заблокировать ролик — сообщаем автору.
+      if (res.moderation.decision === 'auto_block') {
+        alert(
+          'Видео заблокировано автоматической модерацией из-за подозрения на нарушение правил ' +
+            `(${res.moderation.labels.join(', ') || 'риск'}). Оно скрыто до проверки модератором.`,
+        )
+      } else if (res.moderation.decision === 'manual_review') {
+        alert(
+          'Видео отправлено на ручную модерацию и появится в лентах после проверки. ' +
+            'Оно уже доступно вам в разделе «Мои видео».',
+        )
+      }
+      navigate('/me/videos')
+    },
     onError: (e: Error) => setSubmitError(e.message),
   })
 

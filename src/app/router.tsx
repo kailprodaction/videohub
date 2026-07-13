@@ -18,6 +18,8 @@ import { AdminVideosPage } from '@/pages/admin/AdminVideosPage'
 import { AdminCommentsPage } from '@/pages/admin/AdminCommentsPage'
 import { AdminAdsPage } from '@/pages/admin/AdminAdsPage'
 import { AdminFinancePage } from '@/pages/admin/AdminFinancePage'
+import { AdminReportsPage } from '@/pages/admin/AdminReportsPage'
+import { AdminModerationPage } from '@/pages/admin/AdminModerationPage'
 import { PremiumPage } from '@/pages/me/PremiumPage'
 import { PayoutPage } from '@/pages/me/PayoutPage'
 import { TransactionsPage } from '@/pages/me/TransactionsPage'
@@ -119,6 +121,8 @@ export const router = createBrowserRouter([
           { path: 'channels', element: <AdminChannelsPage /> },
           { path: 'videos', element: <AdminVideosPage /> },
           { path: 'comments', element: <AdminCommentsPage /> },
+          { path: 'reports', element: <AdminReportsPage /> },
+          { path: 'moderation', element: <AdminModerationPage /> },
           { path: 'ads', element: <AdminAdsPage /> },
           { path: 'finance', element: <AdminFinancePage /> },
         ],

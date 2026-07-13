@@ -15,6 +15,7 @@ import (
 	authpkg "videohub/internal/auth"
 	"videohub/internal/config"
 	"videohub/internal/handlers"
+	"videohub/internal/security"
 )
 
 func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
@@ -24,7 +25,14 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(security.SecureHeaders)
 	r.Use(middleware.Timeout(60 * time.Second))
+
+	// Глобальный rate limit — щедрый, отсекает только явный флуд/скрейпинг.
+	globalLimiter := security.NewRateLimiter(30, 60) // 30 rps, burst 60 на IP
+	r.Use(globalLimiter.Middleware)
+	// Жёсткий лимит на auth — защита от перебора паролей/кодов.
+	authLimiter := security.NewRateLimiter(0.5, 8) // ~1 запрос / 2с, burst 8
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSOrigins,
@@ -52,10 +60,13 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 	r.Handle("/uploads/*", fs)
 
 	r.Route("/api", func(r chi.Router) {
-		// ---------- Авторизация (всё публично) ----------
-		r.Post("/auth/register", h.AuthRegister)
-		r.Post("/auth/register/verify", h.AuthRegisterVerify)
-		r.Post("/auth/login", h.AuthLogin)
+		// ---------- Авторизация (публично, но под жёстким rate limit) ----------
+		r.Group(func(r chi.Router) {
+			r.Use(authLimiter.Middleware)
+			r.Post("/auth/register", h.AuthRegister)
+			r.Post("/auth/register/verify", h.AuthRegisterVerify)
+			r.Post("/auth/login", h.AuthLogin)
+		})
 		r.Get("/auth/me", h.AuthMe)
 
 		// ---------- Публичные read-only эндпоинты ----------
@@ -101,6 +112,9 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 			r.Post("/upload/video", h.UploadVideo)
 			r.Post("/upload/image", h.UploadImage)
 
+			// Жалобы на контент
+			r.Post("/reports", h.CreateReport)
+
 			// Монетизация
 			r.Post("/premium/buy", h.BuyPremium)
 			r.Get("/transactions/me", h.MyTransactions)
@@ -114,6 +128,13 @@ func NewRouter(h *handlers.Handlers, cfg config.Config) http.Handler {
 
 			r.Get("/admin/stats", h.PlatformStats)
 			r.Get("/admin/comments", h.AdminListComments)
+
+			// Жалобы и модерация
+			r.Get("/admin/reports", h.AdminListReports)
+			r.Post("/admin/reports/{id}/resolve", h.AdminResolveReport)
+			r.Get("/admin/moderation", h.AdminModerationQueue)
+			r.Post("/admin/videos/{id}/moderation", h.AdminModerationDecision)
+			r.Post("/admin/videos/{id}/moderation/rescan", h.AdminRescanModeration)
 			r.Post("/admin/users/{id}/block", h.AdminBlockUser)
 			r.Post("/admin/channels/{id}/stats", h.AdminAdjustStats)
 			r.Post("/admin/videos/{id}/stats", h.AdminAdjustVideoStats)

@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Users, Tv, Video, MessageSquare, BarChart3, Megaphone, Wallet } from 'lucide-react'
+import { Users, Tv, Video, MessageSquare, BarChart3, Megaphone, Wallet, Flag, ShieldCheck } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 
 const tabs = [
@@ -8,6 +8,8 @@ const tabs = [
   { to: '/admin/channels', label: 'Каналы', icon: Tv },
   { to: '/admin/videos', label: 'Видео', icon: Video },
   { to: '/admin/comments', label: 'Комментарии', icon: MessageSquare },
+  { to: '/admin/reports', label: 'Жалобы', icon: Flag },
+  { to: '/admin/moderation', label: 'Модерация', icon: ShieldCheck },
   { to: '/admin/ads', label: 'Реклама', icon: Megaphone },
   { to: '/admin/finance', label: 'Финансы', icon: Wallet },
 ]

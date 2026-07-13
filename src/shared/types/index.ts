@@ -74,6 +74,8 @@ export interface Transaction {
   createdAt: string
 }
 
+export type ModerationStatus = 'approved' | 'pending' | 'blocked' | 'shadow'
+
 export interface Video {
   id: string
   channelId: string
@@ -89,6 +91,66 @@ export interface Video {
   tags: string[]
   category: Category
   visibility: Visibility
+  moderationStatus?: ModerationStatus
+}
+
+// -------- Trust & Safety: жалобы и модерация --------
+
+export type ReportReason =
+  | 'spam'
+  | 'nudity'
+  | 'violence'
+  | 'copyright'
+  | 'hate'
+  | 'misinformation'
+  | 'other'
+
+export type ReportStatus = 'open' | 'reviewing' | 'resolved' | 'dismissed'
+
+export interface Report {
+  id: string
+  targetType: 'video' | 'comment' | 'channel'
+  targetId: string
+  reporterId?: string | null
+  reason: ReportReason
+  details: string
+  status: ReportStatus
+  priority: number
+  resolution: string
+  resolvedBy?: string | null
+  resolvedAt?: string | null
+  createdAt: string
+  targetTitle?: string
+}
+
+export interface ModerationVerdict {
+  nudity: number
+  copyright: number
+  spam: number
+  violence: number
+  overall: number
+  decision: 'approved' | 'manual_review' | 'auto_block'
+  labels: string[]
+  sanction: 'none' | 'warning' | 'demonetize' | 'hide' | 'ban'
+}
+
+export interface ModerationRecord {
+  id: string
+  videoId: string
+  videoTitle?: string
+  nudityScore: number
+  copyrightScore: number
+  spamScore: number
+  violenceScore: number
+  overallScore: number
+  decision: string
+  labels: string[]
+  sanction: string
+  source: string
+  status: ModerationStatus
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+  createdAt: string
 }
 
 export interface Comment {

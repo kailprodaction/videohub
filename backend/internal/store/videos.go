@@ -25,6 +25,7 @@ SELECT
 	v.visibility,
 	v.tags,
 	v.uploaded_at,
+	v.moderation_status,
 	c.name        AS channel_name,
 	c.avatar_url  AS channel_avatar
 FROM videos v
@@ -35,11 +36,12 @@ LEFT JOIN channel_overrides o ON o.channel_id = v.channel_id
 type ListVideosParams struct {
 	Query      string
 	ChannelID  string
-	Limit      int
-	OnlyPublic bool
-	ExcludeID  string
-	Category   string
-	OrderBy    string // "rating", "fresh"; пусто = uploaded_at DESC
+	Limit        int
+	OnlyPublic   bool
+	ApprovedOnly bool // только прошедшие модерацию (для публичных лент/рекомендаций)
+	ExcludeID    string
+	Category     string
+	OrderBy      string // "rating", "fresh"; пусто = uploaded_at DESC
 }
 
 func (s *Store) ListVideos(ctx context.Context, p ListVideosParams) ([]models.Video, error) {
@@ -60,6 +62,9 @@ func (s *Store) ListVideos(ctx context.Context, p ListVideosParams) ([]models.Vi
 	if p.OnlyPublic {
 		conds = append(conds, "v.visibility = 'public'")
 	}
+	if p.ApprovedOnly {
+		conds = append(conds, "v.moderation_status = 'approved'")
+	}
 	if p.Category != "" {
 		add("v.category = $"+itoa(len(args)+1), p.Category)
 	}
@@ -74,7 +79,8 @@ func (s *Store) ListVideos(ctx context.Context, p ListVideosParams) ([]models.Vi
 	}
 	switch p.OrderBy {
 	case "rating":
-		// Формула из ТЗ + бонус свежести (см. recommend.go); тут только базовый порядок.
+		// Базовый порядок «по рейтингу» для предвыборки; финальное ранжирование
+		// делает гибридный рекомендатель в internal/ml.
 		sql += `
 		ORDER BY
 			GREATEST(v.views_count + COALESCE(o.views,0), 0) * 1
@@ -124,13 +130,16 @@ func (s *Store) CreateVideo(ctx context.Context, in models.Video) (*models.Video
 	if in.ID == "" {
 		in.ID = uuid.NewString()
 	}
+	if in.ModerationStatus == "" {
+		in.ModerationStatus = "approved"
+	}
 	_, err := s.Pool.Exec(ctx, `
 		INSERT INTO videos
 			(id, channel_id, title, description, thumbnail_url, video_url, duration_sec,
-			 category, visibility, tags)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			 category, visibility, tags, moderation_status)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		in.ID, in.ChannelID, in.Title, in.Description, in.ThumbnailURL, in.VideoURL, in.DurationSec,
-		in.Category, in.Visibility, in.Tags)
+		in.Category, in.Visibility, in.Tags, in.ModerationStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +281,7 @@ type rowScanner interface {
 func scanVideoRow(row rowScanner) (models.Video, error) {
 	var v models.Video
 	err := row.Scan(&v.ID, &v.ChannelID, &v.Title, &v.Description, &v.ThumbnailURL, &v.VideoURL, &v.DurationSec,
-		&v.Views, &v.Likes, &v.Dislikes, &v.Category, &v.Visibility, &v.Tags, &v.UploadedAt,
+		&v.Views, &v.Likes, &v.Dislikes, &v.Category, &v.Visibility, &v.Tags, &v.UploadedAt, &v.ModerationStatus,
 		&v.ChannelName, &v.ChannelAvatar)
 	return v, err
 }

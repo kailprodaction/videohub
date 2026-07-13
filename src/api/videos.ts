@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Video } from '@/shared/types'
+import type { Video, ModerationVerdict } from '@/shared/types'
 
 type Reaction = 'like' | 'dislike' | null
 
@@ -72,8 +72,14 @@ interface UploadVideoInput {
   tags?: string[]
 }
 
-export async function uploadVideo(input: UploadVideoInput): Promise<Video> {
-  const created = await api<VideoApi>('/api/videos', {
+export interface UploadVideoResult {
+  video: Video
+  moderation: ModerationVerdict
+}
+
+export async function uploadVideo(input: UploadVideoInput): Promise<UploadVideoResult> {
+  // Backend возвращает { video, moderation } — результат ML-проверки при заливке.
+  const res = await api<{ video: VideoApi; moderation: ModerationVerdict }>('/api/videos', {
     method: 'POST',
     body: {
       channelId: input.channelId,
@@ -87,7 +93,7 @@ export async function uploadVideo(input: UploadVideoInput): Promise<Video> {
       tags: input.tags ?? [],
     },
   })
-  return adapt(created)
+  return { video: adapt(res.video), moderation: res.moderation }
 }
 
 export async function updateVideo(): Promise<void> {

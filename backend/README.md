@@ -18,10 +18,11 @@ backend/
 │   ├── config/               # переменные окружения
 │   ├── db/                   # подключение и миграции
 │   ├── models/               # типы (User, Channel, Video, ...)
-│   ├── store/                # SQL-репозитории
-│   ├── handlers/             # HTTP-обработчики
+│   ├── store/                # SQL-репозитории (+ reports, moderation, recommend-сигналы)
+│   ├── handlers/             # HTTP-обработчики (+ reports, moderation)
 │   ├── server/router.go      # маршруты chi
-│   ├── recommend/            # ранжирование рекомендаций
+│   ├── ml/                   # ML: гибридный рекомендатель + модерация контента
+│   ├── security/             # security-заголовки + rate limiting
 │   └── seed/                 # демо-данные
 ├── uploads/
 │   ├── MP4/                  # видео (.mp4, .webm)
@@ -223,20 +224,50 @@ go build -o videohub-server ./cmd/server
   которые добавляются ко всем счётчикам канала и его видео при выдаче
   и распределяются по дням на графиках статистики.
 
-## Рекомендации
+## Trust & Safety: жалобы и модерация
 
-Реализованы в `internal/recommend`. Формула из ТЗ:
+Жалобы (нужна авторизация):
 
-```
-rating = views * 1 + likes * 5 - dislikes * 3 + freshnessBonus
-```
+| Метод | Путь                                | Описание                                                   |
+|-------|-------------------------------------|------------------------------------------------------------|
+| POST  | `/api/reports`                      | Пожаловаться `{ targetType, targetId, reason, details }`   |
 
-`freshnessBonus` равен `(14 - daysOld) * 50` для свежих видео (не старше 14 дней),
-иначе 0. Видео той же категории получает дополнительный множитель `1.4`.
+Админ:
 
-* `GET /api/videos/recommended` отдаёт топ по чистой формуле.
-* `GET /api/videos/{id}/recommendations` отдаёт топ из той же категории
-  (исключая текущее видео), а если категории не хватило — добивает из общего пула.
+| Метод | Путь                                            | Описание                                         |
+|-------|-------------------------------------------------|--------------------------------------------------|
+| GET   | `/api/admin/reports?status=open`                | Очередь жалоб (по приоритету)                     |
+| POST  | `/api/admin/reports/{id}/resolve`               | Закрыть `{ status: reviewing\|resolved\|dismissed }` |
+| GET   | `/api/admin/moderation`                         | Очередь ML-модерации (видео не `approved`)        |
+| POST  | `/api/admin/videos/{id}/moderation`             | Ручное решение `{ status, sanction }`             |
+| POST  | `/api/admin/videos/{id}/moderation/rescan`      | Перепрогнать ML-классификатор                     |
+
+Таблицы: `reports`, `moderation_results`, колонка `videos.moderation_status`
+(`approved|pending|blocked|shadow`). См. миграцию `006_moderation_reports.sql`.
+
+## Рекомендации (ML) — `internal/ml`
+
+Гибридный рекомендатель из пяти методов с MMR-разнообразием (подробно —
+в корневом [README](../README.md#-ml-движок-рекомендаций)):
+
+1. **Popularity** — `views + likes*5 − dislikes*3` c log-сжатием + экспоненциальная свежесть.
+2. **Quality** — нижняя граница Уилсона для доли лайков.
+3. **Content-based** — косинусная близость векторов признаков (категория/теги/длительность/токены).
+4. **Collaborative** — item-item ко-просмотры из `video_views`.
+5. **Personalized** — аффинность к категориям + буст подписок.
+
+* `GET /api/videos/recommended?category=` — персонализированная лента (для залогиненного
+  учитывает историю/подписки; для анонима → популярное+качественное+свежее).
+* `GET /api/videos/{id}/recommendations` — «похожие»: упор на контентную близость
+  и коллаборативный сигнал к текущему видео.
+
+## Модерация контента (ML) — `internal/ml/moderation.go`
+
+При `POST /api/videos` ролик проходит классификатор (nudity/copyright/spam/violence).
+По порогам: `≥0.80` → авто-блок (`blocked`), `0.40–0.80` → ручная модерация
+(`pending`), `<0.40` → публикация (`approved`). Санкция выбирается из DMN-матрицы
+«тип нарушения → санкция». Результат пишется в `moderation_results` (audit trail),
+ответ создания видео — `{ "video": {...}, "moderation": {...} }`.
 
 ## Проверка работы
 

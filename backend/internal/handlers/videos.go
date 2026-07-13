@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -8,8 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authpkg "videohub/internal/auth"
+	"videohub/internal/ml"
 	"videohub/internal/models"
-	"videohub/internal/recommend"
 	"videohub/internal/store"
 )
 
@@ -89,21 +91,44 @@ func (h *Handlers) CreateVideo(w http.ResponseWriter, r *http.Request) {
 		req.Tags = []string{}
 	}
 	req.Tags = normalizeTags(req.Tags)
+
+	// --- ML-модерация до публикации (см. internal/ml) ---
+	// Классификатор оценивает риск по метаданным; решение выставляет
+	// стартовый moderation_status: approved / pending / blocked.
+	verdict := ml.Classify(ml.ModerationInput{
+		Title:       req.Title,
+		Description: req.Description,
+		Tags:        req.Tags,
+		DurationSec: req.DurationSec,
+		LinkCount:   countLinks(req.Description),
+	})
+	status := ml.StatusForDecision(verdict.Decision)
+
 	v, err := h.Store.CreateVideo(r.Context(), models.Video{
-		ChannelID:    req.ChannelID,
-		Title:        req.Title,
-		Description:  req.Description,
-		ThumbnailURL: req.ThumbnailURL,
-		VideoURL:     req.VideoURL,
-		DurationSec:  req.DurationSec,
-		Category:     req.Category,
-		Visibility:   req.Visibility,
-		Tags:         req.Tags,
+		ChannelID:        req.ChannelID,
+		Title:            req.Title,
+		Description:      req.Description,
+		ThumbnailURL:     req.ThumbnailURL,
+		VideoURL:         req.VideoURL,
+		DurationSec:      req.DurationSec,
+		Category:         req.Category,
+		Visibility:       req.Visibility,
+		Tags:             req.Tags,
+		ModerationStatus: status,
 	})
 	if handleStoreErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusCreated, v)
+
+	// Сохраняем прогон модерации (audit trail + очередь модератора).
+	if err := h.Store.SaveModerationResult(r.Context(), toModerationRecord(v.ID, verdict, status)); err != nil {
+		log.Printf("save moderation result for %s: %v", v.ID, err)
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"video":      v,
+		"moderation": verdict,
+	})
 }
 
 // POST /api/videos/{id}/views — засчитывает уникальный просмотр.
@@ -151,20 +176,24 @@ func (h *Handlers) GetReaction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"reaction": fallback(cur, "")})
 }
 
-// GET /api/videos/recommended
+// GET /api/videos/recommended — главная лента (гибридный рекомендатель).
 func (h *Handlers) Recommended(w http.ResponseWriter, r *http.Request) {
 	limit := 24
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	videos, err := h.Store.ListVideos(r.Context(), store.ListVideosParams{OnlyPublic: true, Limit: 100, OrderBy: "rating"})
+	category := r.URL.Query().Get("category")
+	pool, err := h.Store.ListVideos(r.Context(), store.ListVideosParams{
+		OnlyPublic: true, ApprovedOnly: true, Limit: 200, OrderBy: "rating",
+	})
 	if handleStoreErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, recommend.Rank(videos, "", limit))
+	sig := h.recommendSignals(r.Context(), authpkg.UserID(r), "")
+	writeJSON(w, http.StatusOK, ml.RecommendFeed(pool, sig, category, limit))
 }
 
-// GET /api/videos/{id}/recommendations — рекомендации рядом с плеером.
+// GET /api/videos/{id}/recommendations — блок «похожие» рядом с плеером.
 func (h *Handlers) Recommendations(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	current, err := h.Store.GetVideo(r.Context(), id)
@@ -172,10 +201,7 @@ func (h *Handlers) Recommendations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pool, err := h.Store.ListVideos(r.Context(), store.ListVideosParams{
-		OnlyPublic: true,
-		ExcludeID:  id,
-		Limit:      200,
-		OrderBy:    "rating",
+		OnlyPublic: true, ApprovedOnly: true, ExcludeID: id, Limit: 200, OrderBy: "rating",
 	})
 	if handleStoreErr(w, err) {
 		return
@@ -184,7 +210,38 @@ func (h *Handlers) Recommendations(w http.ResponseWriter, r *http.Request) {
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	writeJSON(w, http.StatusOK, recommend.Rank(pool, current.Category, limit))
+	sig := h.recommendSignals(r.Context(), authpkg.UserID(r), id)
+	writeJSON(w, http.StatusOK, ml.RecommendRelated(pool, *current, sig, limit))
+}
+
+// recommendSignals собирает пользовательские и коллаборативные сигналы для
+// рекомендатора. Ошибки отдельных запросов не валят выдачу — деградируем до
+// популярности (сигналы просто остаются пустыми).
+func (h *Handlers) recommendSignals(ctx context.Context, userID, seedVideoID string) ml.Signals {
+	var sig ml.Signals
+	sig.User.UserID = userID
+	if userID != "" {
+		if aff, err := h.Store.UserAffinity(ctx, userID); err == nil {
+			sig.User.CategoryAffinity = aff
+		}
+		if subs, err := h.Store.SubscribedChannelIDs(ctx, userID); err == nil {
+			sig.User.SubscribedChannels = subs
+		}
+		if watched, err := h.Store.WatchedVideoIDs(ctx, userID); err == nil {
+			sig.User.WatchedVideoIDs = watched
+		}
+	}
+	if seedVideoID != "" {
+		if co, err := h.Store.CoWatch(ctx, seedVideoID, 200); err == nil {
+			sig.CoWatch = co
+		}
+	}
+	return sig
+}
+
+// countLinks грубо считает число URL в тексте (сигнал спама для модерации).
+func countLinks(s string) int {
+	return strings.Count(strings.ToLower(s), "http")
 }
 
 func fallback(s, def string) string {

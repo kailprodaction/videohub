@@ -65,10 +65,48 @@ type Video struct {
 	Dislikes      int64     `json:"dislikes"`
 	Category      string    `json:"category"`
 	Visibility    string    `json:"visibility"`
-	Tags          []string  `json:"tags"`
-	UploadedAt    time.Time `json:"uploadedAt"`
-	ChannelName   string    `json:"channelName,omitempty"`
-	ChannelAvatar string    `json:"channelAvatar,omitempty"`
+	Tags             []string  `json:"tags"`
+	UploadedAt       time.Time `json:"uploadedAt"`
+	ModerationStatus string    `json:"moderationStatus"`
+	ChannelName      string    `json:"channelName,omitempty"`
+	ChannelAvatar    string    `json:"channelAvatar,omitempty"`
+}
+
+// Report — жалоба пользователя на контент.
+type Report struct {
+	ID          string     `json:"id"`
+	TargetType  string     `json:"targetType"` // video | comment | channel
+	TargetID    string     `json:"targetId"`
+	ReporterID  *string    `json:"reporterId,omitempty"`
+	Reason      string     `json:"reason"`
+	Details     string     `json:"details"`
+	Status      string     `json:"status"` // open | reviewing | resolved | dismissed
+	Priority    int        `json:"priority"`
+	Resolution  string     `json:"resolution"`
+	ResolvedBy  *string    `json:"resolvedBy,omitempty"`
+	ResolvedAt  *time.Time `json:"resolvedAt,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	TargetTitle string     `json:"targetTitle,omitempty"` // заголовок видео/текст — для админ-очереди
+}
+
+// ModerationRecord — результат ML-модерации видео (строка moderation_results).
+type ModerationRecord struct {
+	ID             string     `json:"id"`
+	VideoID        string     `json:"videoId"`
+	VideoTitle     string     `json:"videoTitle,omitempty"`
+	NudityScore    float64    `json:"nudityScore"`
+	CopyrightScore float64    `json:"copyrightScore"`
+	SpamScore      float64    `json:"spamScore"`
+	ViolenceScore  float64    `json:"violenceScore"`
+	OverallScore   float64    `json:"overallScore"`
+	Decision       string     `json:"decision"`
+	Labels         []string   `json:"labels"`
+	Sanction       string     `json:"sanction"`
+	Source         string     `json:"source"`
+	Status         string     `json:"status"` // текущий moderation_status видео
+	ReviewedBy     *string    `json:"reviewedBy,omitempty"`
+	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
 }
 
 type Comment struct {
